@@ -240,6 +240,45 @@ input[type=text]:focus, input[type=number]:focus{ border-color:var(--gold); }
 .awards-grid .box .tag{ font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
 .awards-grid .box .who{ font-family:'Anton',sans-serif; font-size:18px; }
 .awards-grid .box .detail{ font-size:11.5px; color:var(--dim); margin-top:2px; }
+
+/* ===================== DYNASTY MATCH (coach mode) ===================== */
+.xi-list{ display:flex; flex-direction:column; gap:6px; max-width:640px; margin:0 auto; }
+.xi-row{ display:flex; align-items:center; justify-content:space-between; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:9px 14px; font-size:13px; cursor:pointer; }
+.xi-row.sel{ border-color:var(--gold); background:rgba(224,166,60,0.08); }
+.xi-row .name{ font-weight:600; }
+.xi-row .meta{ color:var(--dimmer); font-size:11px; }
+.xi-counter{ text-align:center; font-family:'Share Tech Mono',monospace; color:var(--gold); font-size:14px; margin:10px 0; }
+
+.quiz-report{ background:var(--panel); border:1px solid var(--gold); border-radius:14px; padding:16px; max-width:680px; margin:0 auto 18px; font-size:13px; line-height:1.6; color:var(--dim); }
+.quiz-report b{ color:var(--gold-light); }
+.quiz-q{ max-width:680px; margin:0 auto 18px; }
+.quiz-q .qtext{ font-weight:600; margin-bottom:8px; font-size:14px; }
+.quiz-opt{ display:block; width:100%; text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:6px; font-size:12.5px; color:var(--cream); cursor:pointer; font-family:'Oswald',sans-serif; }
+.quiz-opt.sel{ border-color:var(--gold); background:rgba(224,166,60,0.1); }
+
+.match-scoreboard{ background:linear-gradient(180deg, rgba(224,166,60,0.08), rgba(224,166,60,0.01)); border:1px solid rgba(224,166,60,0.3); border-radius:16px; padding:16px; text-align:center; margin-bottom:12px; }
+.match-scoreboard .teams{ font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+.match-scoreboard .score{ font-family:'Anton',sans-serif; font-size:clamp(30px,7vw,42px); color:var(--gold-light); margin:4px 0; }
+.match-scoreboard .overs{ font-family:'Share Tech Mono',monospace; font-size:13px; color:var(--dim); }
+.match-scoreboard .target{ font-size:11.5px; color:var(--gold); margin-top:4px; }
+
+.field-diagram{ display:block; margin:0 auto; max-width:320px; width:100%; }
+.field-zone{ cursor:pointer; transition:opacity .15s ease; opacity:0.85; }
+.field-zone:hover{ opacity:1; }
+.field-zone.sel{ opacity:1; stroke:var(--gold-light); stroke-width:3; }
+.field-zone-label{ font-size:11px; fill:var(--cream); pointer-events:none; text-anchor:middle; }
+
+.tactic-row{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; max-width:420px; margin:10px auto; }
+.tactic-btn{ padding:10px 6px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--cream); font-size:12px; text-transform:uppercase; letter-spacing:.03em; cursor:pointer; font-family:'Oswald',sans-serif; font-weight:600; }
+.tactic-btn.sel{ border-color:var(--gold); background:rgba(224,166,60,0.12); color:var(--gold-light); }
+.length-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; max-width:520px; margin:10px auto; }
+
+.match-log{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 12px; max-height:160px; overflow-y:auto; font-size:12px; display:flex; flex-direction:column-reverse; gap:5px; max-width:680px; margin:0 auto; }
+.match-log .line.wkt{ color:var(--red); font-weight:600; }
+.match-log .line.boundary{ color:var(--gold-light); font-weight:600; }
+
+.batter-pick-list{ display:flex; flex-direction:column; gap:6px; max-width:480px; margin:0 auto; }
+.field-preset-row{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; max-width:520px; margin:10px auto; }
 </style>
 </head>
 <body>
@@ -257,6 +296,9 @@ input[type=text]:focus, input[type=number]:focus{ border-color:var(--gold); }
   </div>
   <div class="home-actions" style="margin-top:-6px;">
     <button class="btn btn-green" id="btnMpEntry">Play With Friends<br><span style="font-weight:400;font-size:10.5px;opacity:.85">Up to 10 humans, live room</span></button>
+  </div>
+  <div class="home-actions" style="margin-top:-6px;">
+    <button class="btn btn-ghost" id="btnDynastyEntry" style="border-color:var(--gold);">👑 Dynasty Mode<br><span style="font-weight:400;font-size:10.5px;opacity:.85">Solo vs AI · Auction → Season → Playoffs → Year 2...</span></button>
   </div>
 </section>
 
@@ -331,6 +373,9 @@ input[type=text]:focus, input[type=number]:focus{ border-color:var(--gold); }
   <div class="team-ladder" id="teamLadder"></div>
 
   <div style="display:flex; gap:10px; margin-top:22px; max-width:420px; margin-left:auto; margin-right:auto;">
+    <button class="btn btn-gold btn-block" id="btnContinueToSeason" style="display:none;">👑 Continue to Season</button>
+  </div>
+  <div style="display:flex; gap:10px; margin-top:10px; max-width:420px; margin-left:auto; margin-right:auto;">
     <button class="btn btn-ghost btn-block" id="btnRematch">Rematch (Same Team)</button>
     <button class="btn btn-gold btn-block" id="btnNewAuction">New Auction</button>
   </div>
@@ -339,8 +384,8 @@ input[type=text]:focus, input[type=number]:focus{ border-color:var(--gold); }
 <!-- ============ MULTIPLAYER: ENTRY (CREATE/JOIN) ============ -->
 <section id="screen-mp-entry" class="screen">
   <button class="back-link" id="mpBackHome1">&larr; Back</button>
-  <h2 class="brand" style="font-size:26px;">Play With Friends</h2>
-  <div class="sub">Create a private room and send the code, or join one you were given.</div>
+  <h2 class="brand" id="mpEntryHeading" style="font-size:26px;">Play With Friends</h2>
+  <div class="sub" id="mpEntryBlurb">Create a private room and send the code, or join one you were given.</div>
 
   <div class="mp-tabs">
     <div class="tab active" id="mpTabCreate">Create Room</div>
@@ -474,6 +519,160 @@ input[type=text]:focus, input[type=number]:focus{ border-color:var(--gold); }
 
   <div style="display:flex; gap:10px; margin-top:22px; max-width:420px; margin-left:auto; margin-right:auto;">
     <button class="btn btn-gold btn-block" id="btnMpBackHomeFinal">Back to Home</button>
+  </div>
+</section>
+
+<!-- ============ MULTIPLAYER DYNASTY: SEASON / PLAYOFFS ============ -->
+<section id="screen-dynasty-season" class="screen">
+  <div class="eyebrow">Multiplayer Dynasty</div>
+  <h1 class="brand" id="dynYearLabel">YEAR 1 — SEASON</h1>
+  <div class="sub">Statistical season sim based on final squad strength from the auction — not a ball-by-ball match engine.</div>
+
+  <div class="section-title">Standings</div>
+  <div style="overflow-x:auto;">
+    <table class="squad-table" id="dynStandingsTable"></table>
+  </div>
+
+  <div id="dynLeagueControls" style="text-align:center; margin:16px 0;">
+    <button class="btn btn-gold" id="btnDynSimLeague">Simulate League Matches</button>
+  </div>
+
+  <div id="dynPlayoffsWrap" style="display:none;">
+    <div class="section-title">Playoffs</div>
+    <div class="results-grid" id="dynPlayoffsGrid"></div>
+    <div style="text-align:center; margin:16px 0;">
+      <button class="btn btn-gold" id="btnDynSimPlayoffs">Simulate Playoffs</button>
+    </div>
+  </div>
+
+  <div id="dynChampionWrap" style="display:none; text-align:center; margin:20px 0;">
+    <div class="grade-badge" style="font-size:34px;">🏆</div>
+    <div class="p-name" id="dynChampionName" style="font-family:'Anton',sans-serif;font-size:26px;"></div>
+    <div class="sub">Season <span id="dynChampionYear"></span> Champion</div>
+    <div style="display:flex; gap:10px; margin-top:16px; max-width:420px; margin-left:auto; margin-right:auto;">
+      <button class="btn btn-gold btn-block" id="btnDynNextYear">Start Next Year's Mega Auction</button>
+    </div>
+  </div>
+
+  <div class="section-title">Match Log</div>
+  <div class="commentary" id="dynLog" style="max-height:180px;"></div>
+
+  <div style="display:flex; gap:10px; margin-top:18px; max-width:420px; margin-left:auto; margin-right:auto;">
+    <button class="btn btn-ghost btn-block" id="btnDynLeave">Leave Dynasty</button>
+  </div>
+</section>
+
+<!-- ============ DYNASTY: PLAYING XI SELECTION ============ -->
+<section id="screen-dynasty-xi" class="screen">
+  <div class="eyebrow">Coach Mode</div>
+  <h1 class="brand" style="font-size:28px;" id="xiOpponentLabel">Pick Your Playing XI</h1>
+  <div class="sub">Choose exactly 11 players. Anyone left out becomes your Impact Player option for this match.</div>
+  <div class="xi-counter" id="xiCounter">0 / 11 selected</div>
+  <div class="xi-list" id="xiList"></div>
+  <div style="text-align:center; margin-top:18px;">
+    <button class="btn btn-gold" id="btnConfirmXI" disabled>Confirm XI &amp; See Pitch Report</button>
+  </div>
+</section>
+
+<!-- ============ DYNASTY: PITCH REPORT + QUIZ ============ -->
+<section id="screen-dynasty-quiz" class="screen">
+  <div class="eyebrow">Pre-Match Tactics &amp; Game Plan</div>
+  <h1 class="brand" style="font-size:28px;">Pitch &amp; Conditions Report</h1>
+  <div class="quiz-report">
+    <p><b>Pitch:</b> Dry, hard, with visible surface cracks — likely to deteriorate and turn unpredictably as the match wears on.</p>
+    <p><b>Weather:</b> Overcast skies and heavy humidity expected in the first half; heavy dew forecast on the outfield by evening.</p>
+    <p><b>Ground:</b> Large ground with long boundaries. Opposition are expected to introduce two quality spinners in the middle overs.</p>
+    <p>Answer the five questions below to set your team's tactical game plan for this match.</p>
+  </div>
+  <div id="quizQuestions"></div>
+  <div style="text-align:center; margin-top:10px;">
+    <button class="btn btn-gold" id="btnSubmitQuiz" disabled>Confirm Game Plan &amp; Go to Toss</button>
+  </div>
+</section>
+
+<!-- ============ DYNASTY: LIVE MATCH ============ -->
+<section id="screen-dynasty-match" class="screen">
+  <div class="eyebrow" id="matchInningsLabel">1st Innings</div>
+  <div class="match-scoreboard">
+    <div class="teams" id="matchTeamsLabel">TEAM A vs TEAM B</div>
+    <div class="score" id="matchScoreLine">0/0</div>
+    <div class="overs" id="matchOversLine">0.0 overs</div>
+    <div class="target" id="matchTargetLine"></div>
+  </div>
+
+  <div id="matchBattingPanel" style="display:none;">
+    <div class="section-title" style="text-align:center;">Batting — Set Over Tactics</div>
+    <div class="tactic-row" id="batAggroRow">
+      <button class="tactic-btn" data-v="defensive">Defensive</button>
+      <button class="tactic-btn" data-v="balanced">Balanced</button>
+      <button class="tactic-btn" data-v="aggressive">Aggressive</button>
+    </div>
+    <svg class="field-diagram" id="batFieldSvg" viewBox="0 0 300 300"></svg>
+    <div style="text-align:center; margin-top:10px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <button class="btn btn-gold btn-sm" id="btnBatConfirmTactics">Confirm &amp; Bowl the Over</button>
+      <button class="btn btn-ghost btn-sm" id="btnUseImpactBat" style="display:none;">Use Impact Player</button>
+    </div>
+  </div>
+
+  <div id="matchBowlingPanel" style="display:none;">
+    <div class="section-title" style="text-align:center;">Bowling — Set Up the Over</div>
+    <div class="sub" id="bowlerPickerLabel" style="text-align:center;">Choose your bowler</div>
+    <div class="batter-pick-list" id="bowlerPickList" style="margin-bottom:10px;"></div>
+    <div class="length-row" id="bowlLengthRow">
+      <button class="tactic-btn" data-v="yorker">Yorker</button>
+      <button class="tactic-btn" data-v="full">Full</button>
+      <button class="tactic-btn" data-v="good">Good Length</button>
+      <button class="tactic-btn" data-v="short">Short</button>
+    </div>
+    <div class="tactic-row" id="bowlAggroRow">
+      <button class="tactic-btn" data-v="defensive">Defensive</button>
+      <button class="tactic-btn" data-v="balanced">Balanced</button>
+      <button class="tactic-btn" data-v="aggressive">Aggressive</button>
+    </div>
+    <div class="section-title" style="text-align:center;">Field Setting</div>
+    <div class="field-preset-row" id="fieldPresetRow">
+      <button class="tactic-btn" data-v="attacking">Attacking</button>
+      <button class="tactic-btn" data-v="balanced">Balanced</button>
+      <button class="tactic-btn" data-v="defensive">Defensive</button>
+      <button class="tactic-btn" data-v="off_heavy">Off-Side Heavy</button>
+      <button class="tactic-btn" data-v="leg_heavy">Leg-Side Heavy</button>
+    </div>
+    <div style="text-align:center; margin-top:10px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <button class="btn btn-gold btn-sm" id="btnBowlConfirmOver">Bowl the Over</button>
+      <button class="btn btn-ghost btn-sm" id="btnUseImpactBowl" style="display:none;">Use Impact Player</button>
+    </div>
+  </div>
+
+  <div id="matchMidOverPanel" style="display:none; text-align:center;">
+    <div class="sub">3 balls left in the over. Keep the same approach, or adjust?</div>
+    <button class="btn btn-ghost btn-sm" id="btnMidOverKeep">Keep Same</button>
+    <button class="btn btn-gold btn-sm" id="btnMidOverAdjust">Adjust Tactics</button>
+  </div>
+
+  <div class="section-title" style="text-align:center;">Ball-by-Ball</div>
+  <div class="match-log" id="matchLog"></div>
+</section>
+
+<!-- ============ DYNASTY: WICKET / NEXT BATTER MODAL (uses generic overlay pattern) ============ -->
+<div class="overlay" id="wicketOverlay">
+  <div class="modal" style="max-width:480px; text-align:left;">
+    <h3 style="text-align:center; margin-bottom:10px;">Wicket! Who's In Next?</h3>
+    <div class="batter-pick-list" id="nextBatterList"></div>
+    <div style="text-align:center; margin-top:12px;">
+      <button class="btn btn-ghost btn-sm" id="btnWicketUseImpact" style="display:none;">Bring In Impact Player Instead</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DYNASTY: MATCH RESULT ============ -->
+<section id="screen-dynasty-result" class="screen">
+  <div class="eyebrow">Match Complete</div>
+  <h1 class="brand" style="font-size:30px;" id="matchResultHeadline">RESULT</h1>
+  <div class="results-grid" id="matchResultStats"></div>
+  <div class="section-title">Scorecard</div>
+  <div id="matchResultScorecard"></div>
+  <div style="text-align:center; margin-top:20px;">
+    <button class="btn btn-gold" id="btnBackToSeason">Continue Season</button>
   </div>
 </section>
 
@@ -1322,6 +1521,7 @@ function showResultModal(sold, player, code, price){
 
 /* ---------------- results screen ---------------- */
 function renderResults(){
+  document.getElementById('btnContinueToSeason').style.display = soloDynastyFlow ? 'block' : 'none';
   const a = teamAnalytics(G.userTeam);
   const grade = gradeFromScore(a.score);
   document.getElementById('gradeBadge').textContent = grade.letter;
@@ -1403,6 +1603,7 @@ function show(id){
 
 document.getElementById('btnQuickStart').addEventListener('click', ()=>{ setupOpts.mode='quick'; goToTeamSelect(); });
 document.getElementById('btnFullStart').addEventListener('click', ()=>{ setupOpts.mode='full'; goToTeamSelect(); });
+document.getElementById('btnDynastyEntry').addEventListener('click', ()=>{ soloDynastyFlow=true; SZN=null; setupOpts.mode='quick'; goToTeamSelect(); });
 document.getElementById('backToHome1').addEventListener('click', ()=> show('screen-home'));
 
 function goToTeamSelect(){
@@ -1524,8 +1725,11 @@ document.getElementById('btnRematch').addEventListener('click', ()=>{
 });
 document.getElementById('btnNewAuction').addEventListener('click', ()=>{
   selectedTeam = null;
+  soloDynastyFlow = false;
+  SZN = null;
   show('screen-home');
 });
+document.getElementById('btnContinueToSeason').addEventListener('click', ()=> soloBuildSeason());
 /* ============================================================
    MULTIPLAYER MODULE (v2) — real WebRTC, no backend, no signup.
    Uses PeerJS's free public broker purely for initial signaling;
@@ -1861,6 +2065,680 @@ function mpHostAddReaction(pid, emoji){
   room.reactions = room.reactions.slice(-20);
   mpBroadcastState();
 }
+
+/* ---------------- Dynasty (SOLO, vs AI): season / playoffs on top of the solo auction engine ----------------
+   This does not touch MP.* at all — it operates on G, the exact same solo-engine
+   state used by Quick Auction and Full Auction, and calls initGame()/nextPlayer()
+   (the exact existing functions) to run each year's mega auction. */
+let soloDynastyFlow = false;
+let SZN = null; // solo season state
+function dynSoloTeamStrength(code){
+  const team = G.teams[code];
+  if(!team.squad.length) return 40;
+  return team.squad.reduce((a,p)=>a+p.rat,0)/team.squad.length;
+}
+function soloBuildSeason(){
+  const fixtures = [];
+  for(let i=0;i<TEAM_CODES.length;i++){
+    for(let j=i+1;j<TEAM_CODES.length;j++){
+      fixtures.push({home:TEAM_CODES[i], away:TEAM_CODES[j], played:false, winner:null});
+    }
+  }
+  const standings = {};
+  TEAM_CODES.forEach(code=>{ standings[code] = {played:0, won:0, lost:0, pts:0}; });
+  SZN = {
+    year: SZN ? SZN.year : 1, fixtures, standings, stage:'league',
+    playoffs:{q1:null, elim:null, q2:null, final:null, champion:null}, log:[],
+  };
+  show('screen-dynasty-season');
+  renderDynastySeason();
+}
+function soloSimOneMatch(homeCode, awayCode){
+  const hs = dynSoloTeamStrength(homeCode), as = dynSoloTeamStrength(awayCode);
+  const homeAdv = 3;
+  const total = (hs+homeAdv) + as;
+  const homeWinChance = total>0 ? (hs+homeAdv)/total : 0.5;
+  return Math.random() < homeWinChance ? homeCode : awayCode;
+}
+function soloRecordResult(f, winner){
+  const loser = winner===f.home ? f.away : f.home;
+  f.played = true; f.winner = winner;
+  SZN.standings[winner].played++; SZN.standings[winner].won++; SZN.standings[winner].pts += 2;
+  SZN.standings[loser].played++; SZN.standings[loser].lost++;
+  SZN.log.unshift(`${TEAMS[winner].name} beat ${TEAMS[loser].name}`);
+  SZN.log = SZN.log.slice(0,60);
+}
+function soloFinishLeagueStage(){
+  const S = SZN;
+  const table = TEAM_CODES.slice().sort((a,b)=> S.standings[b].pts-S.standings[a].pts || dynSoloTeamStrength(b)-dynSoloTeamStrength(a));
+  const [t1,t2,t3,t4] = table;
+  S.playoffs = {
+    q1:{home:t1, away:t2, winner:null},
+    elim:{home:t3, away:t4, winner:null},
+    q2:null, final:null, champion:null,
+  };
+  S.stage = 'playoffs';
+  S.log.unshift(`League stage complete! Top 4: ${[t1,t2,t3,t4].map(c=>TEAMS[c].name).join(', ')}`);
+}
+function soloAdvanceToNextHumanMatch(){
+  const S = SZN;
+  if(!S || S.stage!=='league') return;
+  let f;
+  while((f = S.fixtures.find(x=>!x.played))){
+    if(f.home===selectedTeam || f.away===selectedTeam) break;
+    soloRecordResult(f, soloSimOneMatch(f.home, f.away));
+  }
+  if(!f){
+    soloFinishLeagueStage();
+    soloPlayoffAdvance();
+    return;
+  }
+  renderDynastySeason();
+}
+function soloNextPlayoffMatch(){
+  const P = SZN.playoffs;
+  if(!P.q1.winner) return {obj:P.q1, kind:'q1', label:'Qualifier 1'};
+  if(!P.elim.winner) return {obj:P.elim, kind:'elim', label:'Eliminator'};
+  if(!P.q2){
+    const q1Loser = P.q1.winner===P.q1.home ? P.q1.away : P.q1.home;
+    P.q2 = {home:q1Loser, away:P.elim.winner, winner:null};
+  }
+  if(!P.q2.winner) return {obj:P.q2, kind:'q2', label:'Qualifier 2'};
+  if(!P.final){ P.final = {home:P.q1.winner, away:P.q2.winner, winner:null}; }
+  if(!P.final.winner) return {obj:P.final, kind:'final', label:'Final'};
+  return null;
+}
+function soloPlayoffAdvance(){
+  const S = SZN;
+  let nm;
+  while((nm = soloNextPlayoffMatch())){
+    if(nm.obj.home===selectedTeam || nm.obj.away===selectedTeam) break;
+    nm.obj.winner = soloSimOneMatch(nm.obj.home, nm.obj.away);
+    const loser = nm.obj.winner===nm.obj.home ? nm.obj.away : nm.obj.home;
+    S.log.unshift(`${nm.label}: ${TEAMS[nm.obj.winner].name} beat ${TEAMS[loser].name}`);
+  }
+  if(!nm){
+    S.playoffs.champion = S.playoffs.final.winner;
+    S.stage = 'done';
+    S.log.unshift(`🏆 ${TEAMS[S.playoffs.champion].name} win Season ${S.year}!`);
+  }
+  S.log = S.log.slice(0,60);
+  renderDynastySeason();
+}
+function soloSimulatePlayoffs(){ soloPlayoffAdvance(); }
+
+/* ============================================================
+   DYNASTY COACH MODE — interactive match engine.
+   Reuses G.teams[code].squad (the exact squads produced by the
+   existing auction) as each team's player pool. No physics/ball
+   trajectories — every ball is a weighted-random outcome (0/1/2/3/4/6/W)
+   whose probabilities shift based on your tactical choices, producing
+   a normal scorecard, not a simulated flight path.
+   ============================================================ */
+const MAX_OVERS = 20;
+const MAX_OVERS_PER_BOWLER = 4;
+let MATCH = null;
+let PENDING_MIDOVER = false;
+
+const QUIZ = [
+  { q:"Looking at the pitch prior to the toss, it appears dry, hard, with visible surface cracks. What should be our primary strategy upon winning the toss?",
+    opts:{A:"Bat first — take advantage of a firm surface before cracks open up and cause unpredictable bounce/spin later.",
+          B:"Bowl first — use the new ball to exploit early movement off the surface seam.",
+          C:"Bat first — aim to hit high-risk boundaries early before the pitch slows down.",
+          D:"Bowl first — roll through overs quickly with spin right from over #1."}, correct:'A' },
+  { q:"Overcast skies and heavy humidity are expected during the first half of the match. How should our bowling unit adapt during the opening 6 overs?",
+    opts:{A:"Pack the field with spinners to take advantage of atmospheric moisture.",
+          B:"Lead with pace bowlers, bowl a full/upright seam length, and place aggressive slip catching positions.",
+          C:"Bowl cross-seam short balls to make the ball scuff faster.",
+          D:"Focus on defensive line and length outside off stump with deep boundary fielders."}, correct:'B' },
+  { q:"We are defending a moderate total and heavy dew is expected on the outfield in the evening. What tactical decision should the team prioritize?",
+    opts:{A:"Hold back primary spinners for the last 5 overs when the ball is slippery.",
+          B:"Attack with full-length yorkers early and keep towels ready for bowlers to dry the ball between deliveries.",
+          C:"Use dry ball changes frequently, attack with pace/cross-seam deliveries, and bring fielders closer to cut off singles.",
+          D:"Spread all fielders to the boundary and bowl slow, floating full tosses."}, correct:'C' },
+  { q:"The opposition introduces two quality spin bowlers in overs 7–15 on a large ground with long boundaries. What is the best approach for the batting pair in the middle?",
+    opts:{A:"Attempt to hit every delivery over the boundary rope to pressure the spinners.",
+          B:"Block every delivery and save wickets strictly for the last 3 overs.",
+          C:"Rotate strike with soft hands, hit into gaps for 1s and 2s, and target the short boundary on loose deliveries.",
+          D:"Swap the batting order entirely and send in lower-order tailenders to hit blindly."}, correct:'C' },
+  { q:"The opposition needs 45 runs off the final 4 overs with 5 wickets in hand. What is our field-setting and bowling line discipline?",
+    opts:{A:"Bowl length balls right into the batter's hitting arc with no boundary protection.",
+          B:"Mix up wide-yorkers and slow back-of-the-hand balls, with 5 fielders back on the boundary protecting target zones.",
+          C:"Bowl short balls every delivery with all fielders inside the 30-yard circle.",
+          D:"Bowl consistent full-tosses to encourage high mistimed catches."}, correct:'B' },
+];
+const ZONES = [
+  {key:'straight', label:'Straight'},
+  {key:'off', label:'Off Side'},
+  {key:'square', label:'Square'},
+  {key:'leg', label:'Leg Side'},
+  {key:'fine', label:'Fine Leg'},
+];
+
+function battingSkillOf(player){
+  if(player.role==='BWL') return Math.max(20, player.rat-25);
+  return player.rat;
+}
+function bowlingSkillOf(player){
+  if(player.role==='BWL') return player.rat;
+  if(player.role==='ALL') return player.rat-5;
+  return Math.max(15, player.rat-40);
+}
+function quizMult(){ return 1 + (MATCH.quizScore/5)*0.08; }
+
+function dynSimulateBall(ctx){
+  const aggroMult = {defensive:0.72, balanced:1.0, aggressive:1.35}[ctx.batAggro] || 1.0;
+  const bowlAggroMult = {defensive:0.85, balanced:1.0, aggressive:1.2}[ctx.bowlAggro] || 1.0;
+  const lengthWicketMult = {yorker:1.25, full:1.05, good:1.15, short:0.85}[ctx.bowlLength] || 1.0;
+  const lengthBoundaryMult = {yorker:0.75, full:1.0, good:0.85, short:1.15}[ctx.bowlLength] || 1.0;
+  const fieldWicketMult = {attacking:1.2, balanced:1.0, defensive:0.85, off_heavy:1.0, leg_heavy:1.0}[ctx.fieldSetting] || 1.0;
+  const fieldBoundaryMult = {attacking:1.1, balanced:1.0, defensive:0.75, off_heavy:1.0, leg_heavy:1.0}[ctx.fieldSetting] || 1.0;
+  let zoneAdj = 1.0;
+  if(ctx.targetZone==='off' && ctx.fieldSetting==='off_heavy') zoneAdj = 0.8;
+  if(ctx.targetZone==='leg' && ctx.fieldSetting==='leg_heavy') zoneAdj = 0.8;
+  const phaseWicketMult = {powerplay:1.0, middle:1.05, death:1.15}[ctx.phase] || 1.0;
+  const phaseBoundaryMult = {powerplay:1.15, middle:0.95, death:1.25}[ctx.phase] || 1.0;
+
+  const skillDiff = ctx.batSkill - ctx.bowlSkill;
+  let wicketChance = 0.045 * aggroMult * bowlAggroMult * lengthWicketMult * fieldWicketMult * phaseWicketMult * (1 - skillDiff/260);
+  wicketChance = Math.max(0.01, Math.min(0.3, wicketChance));
+
+  let boundaryChance = 0.11 * aggroMult * lengthBoundaryMult * fieldBoundaryMult * zoneAdj * phaseBoundaryMult * (1 + skillDiff/260);
+  boundaryChance = Math.max(0.02, Math.min(0.42, boundaryChance));
+  const sixShare = Math.min(0.55, 0.32 * aggroMult);
+
+  if(Math.random() < wicketChance) return {runs:0, wicket:true};
+  if(Math.random() < boundaryChance){
+    return Math.random()<sixShare ? {runs:6, wicket:false} : {runs:4, wicket:false};
+  }
+  const dotChance = {defensive:0.46, balanced:0.36, aggressive:0.27}[ctx.batAggro] || 0.36;
+  const r = Math.random();
+  if(r < dotChance) return {runs:0, wicket:false};
+  const r2 = Math.random();
+  if(r2 < 0.72) return {runs:1, wicket:false};
+  if(r2 < 0.93) return {runs:2, wicket:false};
+  return {runs:3, wicket:false};
+}
+
+function soloStartHumanMatch(fixtureObj, kind){
+  MATCH = {
+    fixtureRef: fixtureObj, kind: kind || 'league',
+    opponentCode: fixtureObj.home===selectedTeam ? fixtureObj.away : fixtureObj.home,
+    humanXI:[], humanXIIds:new Set(), humanImpactPool:[], humanImpactUsed:false,
+    oppXI:[], oppImpactPool:[],
+    quizAnswers:[null,null,null,null,null], quizScore:0,
+    innings:[null,null], curInnIdx:0,
+  };
+  show('screen-dynasty-xi');
+  renderXISelect();
+}
+function renderXISelect(){
+  const squad = G.teams[selectedTeam].squad;
+  document.getElementById('xiOpponentLabel').textContent = `Pick Your XI vs ${TEAMS[MATCH.opponentCode].name}`;
+  const list = document.getElementById('xiList');
+  list.innerHTML = squad.map((p,idx)=>{
+    const sel = MATCH.humanXIIds.has(idx);
+    return `<div class="xi-row ${sel?'sel':''}" data-idx="${idx}">
+      <span class="name">${p.n}</span>
+      <span class="meta">${ROLE_LABEL[p.role]} · Rating ${p.rat}</span>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.xi-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const idx = parseInt(row.dataset.idx);
+      if(MATCH.humanXIIds.has(idx)) MATCH.humanXIIds.delete(idx);
+      else if(MATCH.humanXIIds.size<11) MATCH.humanXIIds.add(idx);
+      renderXISelect();
+    });
+  });
+  document.getElementById('xiCounter').textContent = `${MATCH.humanXIIds.size} / 11 selected`;
+  document.getElementById('btnConfirmXI').disabled = MATCH.humanXIIds.size!==11;
+}
+document.getElementById('btnConfirmXI').addEventListener('click', ()=>{
+  const squad = G.teams[selectedTeam].squad;
+  const idxArr = Array.from(MATCH.humanXIIds).sort((a,b)=>a-b);
+  MATCH.humanXI = idxArr.map(idx=>squad[idx]);
+  MATCH.humanImpactPool = squad.filter((p,idx)=>!MATCH.humanXIIds.has(idx));
+  const oppSquad = G.teams[MATCH.opponentCode].squad.slice().sort((a,b)=>b.rat-a.rat);
+  MATCH.oppXI = oppSquad.slice(0,11);
+  MATCH.oppImpactPool = oppSquad.slice(11);
+  show('screen-dynasty-quiz');
+  renderQuiz();
+});
+
+function renderQuiz(){
+  const wrap = document.getElementById('quizQuestions');
+  wrap.innerHTML = QUIZ.map((q,qi)=>`
+    <div class="quiz-q">
+      <div class="qtext">Q${qi+1}. ${q.q}</div>
+      ${Object.entries(q.opts).map(([k,v])=>`<button class="quiz-opt ${MATCH.quizAnswers[qi]===k?'sel':''}" data-qi="${qi}" data-k="${k}">${k}) ${v}</button>`).join('')}
+    </div>`).join('');
+  wrap.querySelectorAll('.quiz-opt').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      MATCH.quizAnswers[parseInt(btn.dataset.qi)] = btn.dataset.k;
+      renderQuiz();
+    });
+  });
+  document.getElementById('btnSubmitQuiz').disabled = MATCH.quizAnswers.some(a=>a===null);
+}
+document.getElementById('btnSubmitQuiz').addEventListener('click', ()=>{
+  MATCH.quizScore = QUIZ.filter((q,i)=>MATCH.quizAnswers[i]===q.correct).length;
+  resolveTossAndBuildMatch();
+});
+
+function buildInningsState(battingCode, bowlingCode){
+  const battingXI = battingCode===selectedTeam ? MATCH.humanXI : MATCH.oppXI;
+  const bowlingXI = bowlingCode===selectedTeam ? MATCH.humanXI : MATCH.oppXI;
+  return {
+    battingCode, bowlingCode,
+    order: battingXI.slice(),
+    battingPool: Array.from({length: Math.max(0,battingXI.length-2)}, (_,i)=>i+2),
+    strikerIdx:0, nonStrikerIdx:1,
+    stats: battingXI.map(p=>({player:p, runs:0, balls:0, out:false})),
+    bowlers: bowlingXI.map(p=>({player:p, overs:0, ballsThisOver:0, runs:0, wkts:0})),
+    curBowlerIdx:null, lastOverBowlerIdx:null,
+    totalRuns:0, wickets:0, oversDone:0, ballsThisOver:0,
+    aggression:'balanced', targetZone:'straight',
+    bowlLength:'good', bowlAggression:'balanced', fieldSetting:'balanced',
+    complete:false, target:null,
+  };
+}
+function curInnings(){ return MATCH.innings[MATCH.curInnIdx]; }
+
+function resolveTossAndBuildMatch(){
+  const humanWinsToss = Math.random()<0.5;
+  let battingFirst;
+  if(humanWinsToss){
+    const q1 = MATCH.quizAnswers[0];
+    battingFirst = (q1==='A'||q1==='C') ? selectedTeam : MATCH.opponentCode;
+  } else {
+    battingFirst = MATCH.opponentCode;
+  }
+  MATCH.tossWinner = humanWinsToss ? selectedTeam : MATCH.opponentCode;
+  MATCH.innings[0] = buildInningsState(battingFirst, battingFirst===selectedTeam ? MATCH.opponentCode : selectedTeam);
+  MATCH.curInnIdx = 0;
+  show('screen-dynasty-match');
+  document.getElementById('matchLog').innerHTML = '';
+  addMatchLog(`Toss: ${TEAMS[MATCH.tossWinner].name} won the toss. ${TEAMS[battingFirst].name} will bat first. (Game-plan score: ${MATCH.quizScore}/5)`, 'boundary');
+  startInningsUI();
+}
+
+function addMatchLog(text, cls){
+  const el = document.getElementById('matchLog');
+  const div = document.createElement('div');
+  div.className = 'line'+(cls?' '+cls:'');
+  div.textContent = text;
+  el.insertBefore(div, el.firstChild);
+  while(el.children.length>60) el.removeChild(el.lastChild);
+}
+function updateScoreboard(){
+  const inn = curInnings();
+  document.getElementById('matchScoreLine').textContent = `${inn.totalRuns}/${inn.wickets}`;
+  document.getElementById('matchOversLine').textContent = `${inn.oversDone}.${inn.ballsThisOver} overs`;
+  if(MATCH.curInnIdx===1 && inn.target){
+    const need = inn.target - inn.totalRuns;
+    const ballsLeft = Math.max(0,(MAX_OVERS-inn.oversDone)*6 - inn.ballsThisOver);
+    document.getElementById('matchTargetLine').textContent = need>0 ? `Need ${need} runs off ${ballsLeft} balls` : '';
+  } else {
+    document.getElementById('matchTargetLine').textContent = '';
+  }
+}
+function startInningsUI(){
+  const inn = curInnings();
+  document.getElementById('matchInningsLabel').textContent = (MATCH.curInnIdx===0?'1st':'2nd')+' Innings';
+  document.getElementById('matchTeamsLabel').textContent = inn.target
+    ? `${TEAMS[inn.battingCode].name} batting — need ${inn.target}`
+    : `${TEAMS[inn.battingCode].name} batting`;
+  updateScoreboard();
+  if(inn.battingCode===selectedTeam) promptBatTactics(false);
+  else promptBowlSetup(false);
+}
+
+function highlightTacticButtons(containerId, value){
+  document.querySelectorAll('#'+containerId+' .tactic-btn').forEach(b=> b.classList.toggle('sel', b.dataset.v===value));
+}
+function wireTacticRow(containerId, setter){
+  document.querySelectorAll('#'+containerId+' .tactic-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ setter(btn.dataset.v); highlightTacticButtons(containerId, btn.dataset.v); });
+  });
+}
+wireTacticRow('batAggroRow', v=>{ curInnings().aggression=v; });
+wireTacticRow('bowlLengthRow', v=>{ curInnings().bowlLength=v; });
+wireTacticRow('bowlAggroRow', v=>{ curInnings().bowlAggression=v; });
+wireTacticRow('fieldPresetRow', v=>{ curInnings().fieldSetting=v; });
+
+function wedgePath(cx,cy,r,startDeg,endDeg){
+  const toRad = d=>(d-90)*Math.PI/180;
+  const x1 = cx + r*Math.cos(toRad(startDeg)), y1 = cy + r*Math.sin(toRad(startDeg));
+  const x2 = cx + r*Math.cos(toRad(endDeg)), y2 = cy + r*Math.sin(toRad(endDeg));
+  const largeArc = (endDeg-startDeg)>180 ? 1 : 0;
+  return `M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${largeArc} 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`;
+}
+function renderFieldSvg(){
+  const svg = document.getElementById('batFieldSvg');
+  const cx=150, cy=150, r=140;
+  const step = 360/ZONES.length;
+  let html = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#1a3a1f" stroke="var(--gold)" stroke-width="2"></circle>`;
+  ZONES.forEach((z,i)=>{
+    const start=i*step, end=(i+1)*step;
+    const path = wedgePath(cx,cy,r,start,end);
+    const sel = curInnings().targetZone===z.key;
+    html += `<path class="field-zone ${sel?'sel':''}" data-zone="${z.key}" d="${path}" fill="rgba(224,166,60,${sel?0.35:0.12})" stroke="rgba(255,255,255,0.15)"></path>`;
+    const midDeg = start+step/2;
+    const toRad = d=>(d-90)*Math.PI/180;
+    const lx = cx + (r*0.62)*Math.cos(toRad(midDeg)), ly = cy + (r*0.62)*Math.sin(toRad(midDeg));
+    html += `<text class="field-zone-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}">${z.label}</text>`;
+  });
+  html += `<circle cx="${cx}" cy="${cy}" r="6" fill="var(--cream)"></circle>`;
+  svg.innerHTML = html;
+  svg.querySelectorAll('.field-zone').forEach(p=>{
+    p.addEventListener('click', ()=>{ curInnings().targetZone = p.dataset.zone; renderFieldSvg(); });
+  });
+}
+
+function promptBatTactics(isMidOver){
+  PENDING_MIDOVER = !!isMidOver;
+  document.getElementById('matchBattingPanel').style.display='block';
+  document.getElementById('matchBowlingPanel').style.display='none';
+  document.getElementById('matchMidOverPanel').style.display='none';
+  highlightTacticButtons('batAggroRow', curInnings().aggression);
+  renderFieldSvg();
+}
+document.getElementById('btnBatConfirmTactics').addEventListener('click', ()=>{
+  document.getElementById('matchBattingPanel').style.display='none';
+  playBallBatch(3, !PENDING_MIDOVER);
+});
+
+function renderBowlerPicker(){
+  const inn = curInnings();
+  const list = document.getElementById('bowlerPickList');
+  list.innerHTML = inn.bowlers.map((b,idx)=>{
+    const disabled = b.overs>=MAX_OVERS_PER_BOWLER || idx===inn.lastOverBowlerIdx;
+    const sel = inn.curBowlerIdx===idx;
+    return `<div class="xi-row ${sel?'sel':''}" data-idx="${idx}" style="${disabled?'opacity:.4;pointer-events:none;':''}">
+      <span class="name">${b.player.n}</span>
+      <span class="meta">${b.overs}/${MAX_OVERS_PER_BOWLER} ov · ${b.runs}r · ${b.wkts}w</span>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.xi-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      curInnings().curBowlerIdx = parseInt(row.dataset.idx);
+      renderBowlerPicker();
+      document.getElementById('btnBowlConfirmOver').disabled = false;
+    });
+  });
+}
+function promptBowlSetup(isMidOver){
+  PENDING_MIDOVER = !!isMidOver;
+  document.getElementById('matchBattingPanel').style.display='none';
+  document.getElementById('matchBowlingPanel').style.display='block';
+  const inn = curInnings();
+  const pickerLabel = document.getElementById('bowlerPickerLabel');
+  const pickerList = document.getElementById('bowlerPickList');
+  const confirmBtn = document.getElementById('btnBowlConfirmOver');
+  if(!isMidOver){
+    inn.curBowlerIdx = null;
+    renderBowlerPicker();
+    pickerLabel.style.display='block'; pickerList.style.display='flex';
+    confirmBtn.disabled = true;
+  } else {
+    pickerLabel.style.display='none'; pickerList.style.display='none';
+    confirmBtn.disabled = false;
+  }
+  highlightTacticButtons('bowlLengthRow', inn.bowlLength);
+  highlightTacticButtons('bowlAggroRow', inn.bowlAggression);
+  highlightTacticButtons('fieldPresetRow', inn.fieldSetting);
+  document.getElementById('btnUseImpactBowl').style.display = (!MATCH.humanImpactUsed && MATCH.humanImpactPool.length) ? 'inline-block':'none';
+}
+document.getElementById('btnBowlConfirmOver').addEventListener('click', ()=>{
+  if(!PENDING_MIDOVER && curInnings().curBowlerIdx===null) return;
+  document.getElementById('matchBowlingPanel').style.display='none';
+  playBallBatch(3, !PENDING_MIDOVER);
+});
+document.getElementById('btnUseImpactBowl').addEventListener('click', ()=>{
+  if(MATCH.humanImpactUsed || !MATCH.humanImpactPool.length) return;
+  const sub = MATCH.humanImpactPool.shift();
+  MATCH.humanImpactUsed = true;
+  curInnings().bowlers.push({player:sub, overs:0, ballsThisOver:0, runs:0, wkts:0});
+  addMatchLog(`Impact Player! ${sub.n} added to the bowling attack.`, 'hot');
+  renderBowlerPicker();
+  document.getElementById('btnUseImpactBowl').style.display='none';
+});
+
+document.getElementById('btnMidOverKeep').addEventListener('click', ()=>{
+  document.getElementById('matchMidOverPanel').style.display='none';
+  playBallBatch(3, false);
+});
+document.getElementById('btnMidOverAdjust').addEventListener('click', ()=>{
+  document.getElementById('matchMidOverPanel').style.display='none';
+  const inn = curInnings();
+  if(inn.battingCode===selectedTeam) promptBatTactics(true);
+  else promptBowlSetup(true);
+});
+
+function aiAutoPickBowler(inn){
+  const eligible = inn.bowlers.map((b,idx)=>({b,idx})).filter(x=>x.b.overs<MAX_OVERS_PER_BOWLER && x.idx!==inn.lastOverBowlerIdx);
+  if(!eligible.length) return inn.bowlers.findIndex(b=>b.overs<MAX_OVERS_PER_BOWLER);
+  eligible.sort((a,b)=> bowlingSkillOf(b.b.player)-bowlingSkillOf(a.b.player));
+  return eligible[Math.floor(Math.random()*Math.min(3,eligible.length))].idx;
+}
+function aiPickBattingAggro(inn){
+  if(MATCH.curInnIdx===1 && inn.target){
+    const need = inn.target - inn.totalRuns;
+    const ballsLeft = Math.max(1,(MAX_OVERS-inn.oversDone)*6 - inn.ballsThisOver);
+    const rrr = need/(ballsLeft/6);
+    if(rrr>11) return 'aggressive';
+    if(rrr>7) return 'balanced';
+    return 'defensive';
+  }
+  if(inn.oversDone<6) return 'balanced';
+  if(inn.oversDone>=16) return 'aggressive';
+  return 'balanced';
+}
+function aiPickBowlingAggro(){ return ['defensive','balanced','aggressive'][Math.floor(Math.random()*3)]; }
+function aiPickLength(inn){
+  const opts = ['yorker','full','good','short'];
+  if(inn.oversDone>=16) return Math.random()<0.5?'yorker':'good';
+  return opts[Math.floor(Math.random()*opts.length)];
+}
+function autoPickNextBatterForAI(inn){
+  const idx = inn.battingPool.shift();
+  if(idx===undefined) return;
+  inn.strikerIdx = idx;
+  addMatchLog(`${inn.order[idx].n} comes to the crease.`);
+}
+
+function playOneBall(){
+  const inn = curInnings();
+  if(inn.bowlingCode!==selectedTeam && inn.ballsThisOver===0){
+    inn.curBowlerIdx = aiAutoPickBowler(inn);
+  }
+  const humanBats = inn.battingCode===selectedTeam;
+  const striker = inn.stats[inn.strikerIdx];
+  const bowlerEntry = inn.bowlers[inn.curBowlerIdx];
+
+  const battingSkill = battingSkillOf(striker.player) * (humanBats ? quizMult() : 1);
+  const bowlingSkill = bowlingSkillOf(bowlerEntry.player) * (!humanBats ? quizMult() : 1);
+  const battingAggro = humanBats ? inn.aggression : aiPickBattingAggro(inn);
+  const bowlingAggro = !humanBats ? inn.bowlAggression : aiPickBowlingAggro();
+  const bowlLength = !humanBats ? inn.bowlLength : aiPickLength(inn);
+  const fieldSetting = !humanBats ? inn.fieldSetting : 'balanced';
+  const targetZone = humanBats ? inn.targetZone : 'straight';
+  const phase = inn.oversDone<6 ? 'powerplay' : (inn.oversDone<15 ? 'middle' : 'death');
+
+  const result = dynSimulateBall({batSkill:battingSkill, bowlSkill:bowlingSkill, batAggro:battingAggro, bowlAggro:bowlingAggro, bowlLength, fieldSetting, targetZone, phase});
+
+  inn.ballsThisOver++;
+  bowlerEntry.ballsThisOver++;
+  if(result.wicket){
+    inn.wickets++;
+    striker.out = true;
+    bowlerEntry.wkts++;
+    addMatchLog(`WICKET! ${striker.player.n} is out.`, 'wkt');
+  } else {
+    inn.totalRuns += result.runs;
+    striker.runs += result.runs; striker.balls++;
+    bowlerEntry.runs += result.runs;
+    if(result.runs===4||result.runs===6) addMatchLog(`${striker.player.n} hits a ${result.runs}!`, 'boundary');
+    if(result.runs%2===1){ const t=inn.strikerIdx; inn.strikerIdx=inn.nonStrikerIdx; inn.nonStrikerIdx=t; }
+  }
+  if(inn.ballsThisOver>=6){
+    bowlerEntry.overs++;
+    inn.lastOverBowlerIdx = inn.curBowlerIdx;
+    inn.oversDone++;
+    inn.ballsThisOver=0;
+    bowlerEntry.ballsThisOver=0;
+    const t=inn.strikerIdx; inn.strikerIdx=inn.nonStrikerIdx; inn.nonStrikerIdx=t;
+  }
+  updateScoreboard();
+  return result;
+}
+
+function showWicketModalForHuman(){
+  const inn = curInnings();
+  const list = document.getElementById('nextBatterList');
+  const available = inn.battingPool.map(idx=>({idx, player:inn.order[idx]}));
+  list.innerHTML = available.map(a=>`<div class="xi-row" data-idx="${a.idx}"><span class="name">${a.player.n}</span><span class="meta">${ROLE_LABEL[a.player.role]} · ${a.player.rat}</span></div>`).join('') || '<div style="text-align:center;color:var(--dimmer);">All out!</div>';
+  list.querySelectorAll('.xi-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const idx = parseInt(row.dataset.idx);
+      inn.strikerIdx = idx;
+      inn.battingPool = inn.battingPool.filter(i=>i!==idx);
+      document.getElementById('wicketOverlay').classList.remove('show');
+      resumeAfterWicket();
+    });
+  });
+  document.getElementById('btnWicketUseImpact').style.display = (!MATCH.humanImpactUsed && MATCH.humanImpactPool.length) ? 'inline-block':'none';
+  document.getElementById('wicketOverlay').classList.add('show');
+}
+document.getElementById('btnWicketUseImpact').addEventListener('click', ()=>{
+  const inn = curInnings();
+  if(MATCH.humanImpactUsed || !MATCH.humanImpactPool.length) return;
+  const sub = MATCH.humanImpactPool.shift();
+  MATCH.humanImpactUsed = true;
+  inn.order.push(sub);
+  inn.stats.push({player:sub, runs:0, balls:0, out:false});
+  inn.strikerIdx = inn.order.length-1;
+  addMatchLog(`Impact Player! ${sub.n} comes in to bat.`, 'hot');
+  document.getElementById('wicketOverlay').classList.remove('show');
+  resumeAfterWicket();
+});
+function resumeAfterWicket(){
+  playBallBatch(MATCH.pendingBatchRemaining, MATCH.pendingBatchIsFirstHalf);
+}
+
+function playBallBatch(remaining, isFirstHalf){
+  const inn = curInnings();
+  if(inn.complete) return;
+  if(remaining<=0){
+    if(isFirstHalf) showMidOverPrompt();
+    else finishOverAndContinue();
+    return;
+  }
+  const ball = playOneBall();
+  if(ball.wicket){
+    if(inn.wickets>=10){
+      inn.complete = true;
+      finishInningsOrMatch();
+      return;
+    }
+    if(inn.battingCode===selectedTeam){
+      MATCH.pendingBatchRemaining = remaining-1;
+      MATCH.pendingBatchIsFirstHalf = isFirstHalf;
+      showWicketModalForHuman();
+      return;
+    } else {
+      autoPickNextBatterForAI(inn);
+    }
+  }
+  if(inn.oversDone>=MAX_OVERS){
+    inn.complete = true;
+    finishInningsOrMatch();
+    return;
+  }
+  if(MATCH.curInnIdx===1 && inn.target && inn.totalRuns>=inn.target){
+    inn.complete = true;
+    finishInningsOrMatch();
+    return;
+  }
+  playBallBatch(remaining-1, isFirstHalf);
+}
+function showMidOverPrompt(){
+  document.getElementById('matchBattingPanel').style.display='none';
+  document.getElementById('matchBowlingPanel').style.display='none';
+  document.getElementById('matchMidOverPanel').style.display='block';
+}
+function finishOverAndContinue(){
+  const inn = curInnings();
+  addMatchLog(`End of over ${inn.oversDone}: ${inn.totalRuns}/${inn.wickets}`);
+  if(inn.battingCode===selectedTeam) promptBatTactics(false);
+  else promptBowlSetup(false);
+}
+function finishInningsOrMatch(){
+  const inn = curInnings();
+  addMatchLog(`Innings complete: ${TEAMS[inn.battingCode].name} ${inn.totalRuns}/${inn.wickets} (${inn.oversDone}.${inn.ballsThisOver} ov)`, 'boundary');
+  if(MATCH.curInnIdx===0){
+    const inn2 = buildInningsState(inn.bowlingCode, inn.battingCode);
+    inn2.target = inn.totalRuns+1;
+    MATCH.innings[1] = inn2;
+    MATCH.curInnIdx = 1;
+    startInningsUI();
+  } else {
+    finishMatch();
+  }
+}
+function finishMatch(){
+  const inn1 = MATCH.innings[0], inn2 = MATCH.innings[1];
+  let winnerCode;
+  if(inn2.totalRuns >= inn2.target) winnerCode = inn2.battingCode;
+  else if(inn2.totalRuns < inn1.totalRuns) winnerCode = inn1.battingCode;
+  else winnerCode = Math.random()<0.5 ? inn1.battingCode : inn2.battingCode;
+
+  if(MATCH.kind==='league'){
+    soloRecordResult(MATCH.fixtureRef, winnerCode);
+  } else {
+    MATCH.fixtureRef.winner = winnerCode;
+    SZN.log.unshift(`${TEAMS[winnerCode].name} won the match!`);
+    SZN.log = SZN.log.slice(0,60);
+  }
+  renderMatchResult(winnerCode);
+  show('screen-dynasty-result');
+}
+function renderMatchResult(winnerCode){
+  const inn1 = MATCH.innings[0], inn2 = MATCH.innings[1];
+  const humanWon = winnerCode===selectedTeam;
+  const headline = document.getElementById('matchResultHeadline');
+  headline.textContent = humanWon ? `🏆 ${TEAMS[selectedTeam].name} WIN!` : `${TEAMS[winnerCode].name} WIN`;
+  headline.style.color = humanWon ? 'var(--green)' : 'var(--red)';
+  document.getElementById('matchResultStats').innerHTML = `
+    <div class="box"><div class="num">${inn1.totalRuns}/${inn1.wickets}</div><div class="lbl">${TEAMS[inn1.battingCode].name} (${inn1.oversDone}.${inn1.ballsThisOver})</div></div>
+    <div class="box"><div class="num">${inn2.totalRuns}/${inn2.wickets}</div><div class="lbl">${TEAMS[inn2.battingCode].name} (${inn2.oversDone}.${inn2.ballsThisOver})</div></div>
+  `;
+  const scoreTable = (inn)=>{
+    const rows = inn.stats.filter(s=>s.balls>0||s.out).map(s=>`<tr><td>${s.player.n}${s.out?'':' *'}</td><td>${s.runs}</td><td>${s.balls}</td></tr>`).join('');
+    return `<div class="section-title">${TEAMS[inn.battingCode].name} — ${inn.totalRuns}/${inn.wickets}</div>
+      <table class="squad-table"><thead><tr><th>Batter</th><th>R</th><th>B</th></tr></thead><tbody>${rows || '<tr><td colspan="3" style="color:var(--dimmer);padding:8px;">No balls faced.</td></tr>'}</tbody></table>`;
+  };
+  document.getElementById('matchResultScorecard').innerHTML = scoreTable(inn1) + scoreTable(inn2);
+}
+document.getElementById('btnBackToSeason').addEventListener('click', ()=>{
+  show('screen-dynasty-season');
+  if(MATCH.kind==='league') soloAdvanceToNextHumanMatch();
+  else soloPlayoffAdvance();
+});
+
+function soloNextYear(){
+  SZN.year = (SZN.year||1) + 1;
+  const nextYear = SZN.year;
+  SZN = null;
+  initGame(setupOpts); // reuses the exact same auction-start function used by Quick/Full Auction
+  SZN = {year: nextYear}; // remember the year across the upcoming auction
+  document.getElementById('commentary').innerHTML = '';
+  addCommentary(`Dynasty Year ${nextYear}: Mega Auction begins!`, 'hot');
+  show('screen-auction');
+  nextPlayer();
+}
+
 function mpHostStartGame(){
   const room = MP.room;
   if(!room.players.every(p=>p.ready)){ mpSendToOne(room.hostId,{type:'toast', text:'Not everyone is ready.'}); return; }
@@ -2342,6 +3220,81 @@ function renderMpResults(){
   }).join('');
 }
 document.getElementById('btnMpBackHomeFinal').addEventListener('click', ()=> mpCleanupAndGoHome());
+
+document.getElementById('btnDynNextYear').addEventListener('click', ()=> soloNextYear());
+document.getElementById('btnDynLeave').addEventListener('click', ()=>{
+  if(confirm('Leave this dynasty and return home?')){ soloDynastyFlow = false; SZN = null; show('screen-home'); }
+});
+
+function renderDynastySeason(){
+  const S = SZN;
+  if(!S) return;
+  document.getElementById('dynYearLabel').textContent = `YEAR ${S.year} — SEASON`;
+
+  const table = TEAM_CODES.slice().sort((a,b)=> S.standings[b].pts-S.standings[a].pts || dynSoloTeamStrength(b)-dynSoloTeamStrength(a));
+  const rows = table.map(code=>{
+    const st = S.standings[code];
+    const isYou = code===selectedTeam;
+    return `<tr><td>${TEAMS[code].name}${isYou?' — You':' (AI)'}</td><td>${st.played}</td><td>${st.won}</td><td>${st.lost}</td><td>${st.pts}</td></tr>`;
+  }).join('');
+  document.getElementById('dynStandingsTable').innerHTML = `
+    <thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>Pts</th></tr></thead>
+    <tbody>${rows}</tbody>`;
+
+  const leagueCtrl = document.getElementById('dynLeagueControls');
+  const btnSim = document.getElementById('btnDynSimLeague');
+  if(S.stage==='league'){
+    leagueCtrl.style.display = 'block';
+    const nextFixture = S.fixtures.find(x=>!x.played);
+    if(nextFixture && (nextFixture.home===selectedTeam || nextFixture.away===selectedTeam)){
+      const opp = nextFixture.home===selectedTeam ? nextFixture.away : nextFixture.home;
+      btnSim.textContent = `🏏 Play Match vs ${TEAMS[opp].name}`;
+      btnSim.onclick = ()=> soloStartHumanMatch(nextFixture, 'league');
+    } else {
+      btnSim.textContent = 'Simulate Next AI Matches';
+      btnSim.onclick = ()=> soloAdvanceToNextHumanMatch();
+    }
+  } else {
+    leagueCtrl.style.display = 'none';
+  }
+
+  const playoffsWrap = document.getElementById('dynPlayoffsWrap');
+  if(S.stage==='playoffs' || S.stage==='done'){
+    playoffsWrap.style.display = 'block';
+    const P = S.playoffs;
+    const box = (label, m) => m ? `<div class="box"><div class="num" style="font-size:14px;">${TEAMS[m.home].name} vs ${TEAMS[m.away].name}</div><div class="lbl">${label}${m.winner?' — '+TEAMS[m.winner].name+' won':' — pending'}</div></div>` : '';
+    document.getElementById('dynPlayoffsGrid').innerHTML = box('Qualifier 1', P.q1) + box('Eliminator', P.elim) + box('Qualifier 2', P.q2) + box('Final', P.final);
+    const btnPlayoffs = document.getElementById('btnDynSimPlayoffs');
+    if(S.stage==='playoffs'){
+      btnPlayoffs.style.display = 'inline-block';
+      const nm = soloNextPlayoffMatch();
+      if(nm && (nm.obj.home===selectedTeam || nm.obj.away===selectedTeam)){
+        const opp = nm.obj.home===selectedTeam ? nm.obj.away : nm.obj.home;
+        btnPlayoffs.textContent = `🏏 Play ${nm.label} vs ${TEAMS[opp].name}`;
+        btnPlayoffs.onclick = ()=> soloStartHumanMatch(nm.obj, nm.kind);
+      } else {
+        btnPlayoffs.textContent = 'Simulate Next Playoff Match';
+        btnPlayoffs.onclick = ()=> soloPlayoffAdvance();
+      }
+    } else {
+      btnPlayoffs.style.display = 'none';
+    }
+  } else {
+    playoffsWrap.style.display = 'none';
+  }
+
+  const champWrap = document.getElementById('dynChampionWrap');
+  if(S.stage==='done'){
+    champWrap.style.display = 'block';
+    document.getElementById('dynChampionName').textContent = TEAMS[S.playoffs.champion].name;
+    document.getElementById('dynChampionYear').textContent = S.year;
+  } else {
+    champWrap.style.display = 'none';
+  }
+
+  document.getElementById('dynLog').innerHTML = (S.log||[]).map(l=>`<div class="line">${l}</div>`).join('');
+}
+
 
 document.getElementById('btnSkip').addEventListener('click', ()=>{
 
