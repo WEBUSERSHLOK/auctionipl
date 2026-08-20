@@ -365,6 +365,7 @@ input[type=text]:focus, input[type=number]:focus{ border-color:var(--gold); }
       <div class="mp-toggle-row"><label style="margin:0;">Allow Chat</label><input type="checkbox" id="mpSetChat" checked style="width:auto;"></div>
       <div class="mp-toggle-row"><label style="margin:0;">Allow Reactions</label><input type="checkbox" id="mpSetReact" checked style="width:auto;"></div>
       <div class="mp-toggle-row"><label style="margin:0;">Allow Pause</label><input type="checkbox" id="mpSetPause" checked style="width:auto;"></div>
+      <div class="mp-toggle-row"><label style="margin:0;">AI Fills Empty Teams</label><input type="checkbox" id="mpSetAiFill" checked style="width:auto;"></div>
     </div>
     <button class="btn btn-gold btn-block" id="btnMpCreateRoom" style="max-width:340px;margin:16px auto 0;display:block;">Create Room</button>
   </div>
@@ -1630,7 +1631,7 @@ function mpAskPrice(AS){
 }
 function mpIsAiControlled(room, code){
   const owner = room.players.find(p=>p.team===code);
-  if(!owner) return true;
+  if(!owner) return room.settings.aiFill !== false;
   if(owner.connected===false && room.settings.disconnectBehavior==='ai_takeover') return true;
   return false;
 }
@@ -2002,6 +2003,7 @@ document.getElementById('btnMpCreateRoom').addEventListener('click', ()=>{
     allowChat: document.getElementById('mpSetChat').checked,
     allowReactions: document.getElementById('mpSetReact').checked,
     allowPause: document.getElementById('mpSetPause').checked,
+    aiFill: document.getElementById('mpSetAiFill').checked,
   };
   const code = genRoomCode();
   MP.roomCode = code;
@@ -2236,7 +2238,7 @@ function renderMpAuction(){
       const dot = owner.connected===false ? 'off':'on';
       const takeover = mpIsAiControlled(room, code);
       tag = `<span class="conn-dot ${dot}"></span>${escapeHtml(owner.name)}${takeover?' <span class="ai-tag">AI TAKEOVER</span>':' <span class="human-tag">HUMAN</span>'}`;
-    } else { tag = `<span class="ai-tag">AI</span>`; }
+    } else { tag = room.settings.aiFill===false ? `<span class="ai-tag">INACTIVE</span>` : `<span class="ai-tag">AI</span>`; }
     return `<div class="mini-team ${leading?'leading':''}">
       <div class="row1"><span class="tname">${TEAMS[code].name}</span><span class="purse">${fmtMoney(team.purse)}</span></div>
       <div class="subrow"><span>${tag}</span></div>
