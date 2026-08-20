@@ -1549,7 +1549,7 @@ function uid(){ return 'u'+Math.random().toString(36).slice(2,10)+Date.now().toS
 function genRoomCode(){
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no O/0, I/1
   let s=''; for(let i=0;i<6;i++) s+=chars[Math.floor(Math.random()*chars.length)];
-  return 'AUC'+s;
+  return s;
 }
 MP.myId = uid();
 
