@@ -1542,7 +1542,7 @@ document.getElementById('btnNewAuction').addEventListener('click', ()=>{
 const MP = {
   myId:null, myName:'', roomCode:null, isHost:false,
   peer:null, hostConn:null, conns:{},
-  room:null, auction:null,
+  room:null, auction:null, timerSync:null, outbox:[],
   reconnectTimer:null, seenChatIds:new Set(), seenReactionIds:new Set(),
 };
 function uid(){ return 'u'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); }
@@ -1703,9 +1703,17 @@ function mpAdvancePlayerHost(){
 }
 
 /* ---------------- Peer / WebRTC transport ---------------- */
+function mpApplyLocalTimerSync(AS){
+  if(!AS){ MP.timerSync = null; return; }
+  MP.timerSync = { secsLeft: AS.secsLeft||0, status: AS.status, receivedAtLocal: Date.now() };
+}
 function mpBroadcastState(){
+  if(MP.auction){
+    MP.auction.secsLeft = MP.auction.status==='running' ? Math.max(0, Math.ceil((MP.auction.timerEndsAt-Date.now())/1000)) : 0;
+  }
   const payload = {type:'state', room:MP.room, auction:MP.auction};
   Object.values(MP.conns).forEach(c=>{ try{ if(c.open) c.send(payload); }catch(e){} });
+  mpApplyLocalTimerSync(MP.auction);
   mpRenderCurrentScreen();
 }
 function mpSendToOne(pid, msg){
@@ -1713,9 +1721,22 @@ function mpSendToOne(pid, msg){
   const c = MP.conns[pid]; if(c && c.open){ try{ c.send(msg); }catch(e){} }
 }
 function mpSend(type, payload){
-  if(MP.isHost){ mpHostHandleMessage(null, {type, payload, id:MP.myId, name:MP.myName}); }
-  else if(MP.hostConn && MP.hostConn.open){ try{ MP.hostConn.send({type, payload, id:MP.myId, name:MP.myName}); }catch(e){} }
-  else mpToast('Not connected to the host right now.');
+  const msg = {type, payload, id:MP.myId, name:MP.myName};
+  if(MP.isHost){ mpHostHandleMessage(null, msg); return; }
+  if(MP.hostConn && MP.hostConn.open){
+    try{ MP.hostConn.send(msg); }
+    catch(e){ MP.outbox.push(msg); }
+  } else {
+    MP.outbox.push(msg);
+    mpToast('Connection is reconnecting — your action will send automatically.');
+  }
+}
+function mpFlushOutbox(){
+  if(!MP.outbox.length || !MP.hostConn || !MP.hostConn.open) return;
+  const pending = MP.outbox; MP.outbox = [];
+  pending.forEach(msg=>{
+    try{ MP.hostConn.send(msg); }catch(e){ MP.outbox.push(msg); }
+  });
 }
 
 function mpInitHostPeer(code, onReady){
@@ -1870,13 +1891,13 @@ function mpHostTick(){
   const AS = MP.auction;
   if(!AS || AS.status==='finished') return;
   if(AS.status==='sold_pause' || AS.status==='unsold_pause'){
-    if(Date.now()-(AS.pauseStartedAt||0) > 1900){ mpAdvancePlayerHost(); mpBroadcastState(); }
+    if(Date.now()-(AS.pauseStartedAt||0) > 1900){ mpAdvancePlayerHost(); }
+    mpBroadcastState();
     return;
   }
-  if(!AS.currentPlayer) return;
+  if(!AS.currentPlayer){ mpBroadcastState(); return; }
   AS.out = TEAM_CODES.filter(code=>!mpEligible(AS, code, AS.currentPlayer));
-  if(AS.resolved) return;
-  let changed = false;
+  if(AS.resolved){ mpBroadcastState(); return; }
   const ask = mpAskPrice(AS);
   const candidates = [];
   TEAM_CODES.forEach(code=>{
@@ -1893,10 +1914,11 @@ function mpHostTick(){
     for(let i=0;i<candidates.length;i++){ r-=weights[i]; if(r<=0){ chosen=candidates[i].code; break; } }
     mpApplyBid(AS, chosen, null);
     mpPushEvent(AS, `${TEAMS[chosen].name} 🤖 bids ${fmtMoney(AS.bid)} for ${AS.currentPlayer.n}`);
-    changed = true;
   }
-  if(Date.now() >= AS.timerEndsAt){ mpResolveCurrent(AS); changed = true; }
-  if(changed) mpBroadcastState();
+  if(Date.now() >= AS.timerEndsAt){ mpResolveCurrent(AS); }
+  // Always resync — this refreshes secsLeft on every client at least every ~900ms,
+  // even during quiet stretches with no bids, so countdowns never drift or go stale.
+  mpBroadcastState();
 }
 
 /* ---------------- Client (joiner) connection ---------------- */
@@ -1919,6 +1941,7 @@ function mpAttachClientConn(conn){
     conn.send({type:'hello', name:MP.myName, id:MP.myId});
     if(MP.reconnectTimer){ clearInterval(MP.reconnectTimer); MP.reconnectTimer=null; }
     if(MP.room && MP.room.phase && MP.room.phase!=='lobby') mpToast('Reconnected!');
+    setTimeout(mpFlushOutbox, 150);
   });
   conn.on('data', msg=> mpClientHandleMessage(msg));
   conn.on('close', ()=>{ if(MP.roomCode){ mpToast('Lost connection to host — reconnecting...'); mpScheduleReconnect(); } });
@@ -1932,7 +1955,7 @@ function mpScheduleReconnect(){
   }, 3000);
 }
 function mpClientHandleMessage(msg){
-  if(msg.type==='state'){ MP.room = msg.room; MP.auction = msg.auction; mpRenderCurrentScreen(); }
+  if(msg.type==='state'){ MP.room = msg.room; MP.auction = msg.auction; mpApplyLocalTimerSync(MP.auction); mpRenderCurrentScreen(); }
   else if(msg.type==='toast'){ mpToast(msg.text); }
   else if(msg.type==='kicked'){ alert('You were removed from the room by the host.'); mpCleanupAndGoHome(); }
   else if(msg.type==='room_ended'){ alert('The host ended this room.'); mpCleanupAndGoHome(); }
@@ -2155,7 +2178,15 @@ function renderMpAuction(){
     stageEl.innerHTML = `<div class="p-name">Auction Complete</div>`;
   }
 
-  const secsLeft = AS.status==='running' ? Math.max(0, Math.ceil((AS.timerEndsAt-Date.now())/1000)) : 0;
+  let secsLeft = 0;
+  if(AS.status==='running'){
+    if(MP.timerSync && MP.timerSync.status==='running'){
+      const elapsed = (Date.now()-MP.timerSync.receivedAtLocal)/1000;
+      secsLeft = Math.max(0, Math.ceil(MP.timerSync.secsLeft - elapsed));
+    } else {
+      secsLeft = Math.max(0, Math.ceil((AS.timerEndsAt-Date.now())/1000)); // fallback if no sync yet
+    }
+  }
   const timerEl = document.getElementById('mpTimerNum');
   timerEl.textContent = AS.status==='running' ? secsLeft : '';
   timerEl.className = 'mp-timer-num'+(secsLeft<=3 && AS.status==='running' ? ' crit':'');
