@@ -13,6 +13,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
 :root{
   --bg-dark:#070a12;
@@ -1525,49 +1526,32 @@ document.getElementById('btnNewAuction').addEventListener('click', ()=>{
   show('screen-home');
 });
 /* ============================================================
-   MULTIPLAYER MODULE — built as a layer on top of the existing
-   engine above. Nothing in the solo game is modified; this reuses
-   PLAYERS_RAW, TEAMS, TEAM_CODES, ROLE_LABEL, NAT_LABEL, fmtMoney,
-   shuffle, increment, roleTargets, countRoles, deriveStats,
-   seededRand, buildPlayerPool, gradeFromScore, bestXI, show()
-   directly from the code above.
-
-   Architecture note: there is no real game server available in
-   this environment — only a shared key/value store. So one
-   connected client (the host, by default) acts as the "leader":
-   it's the only client allowed to apply bids, run AI logic, and
-   advance the auction. Everyone else polls the shared state and
-   submits bid/pass/chat requests into a queue that the leader
-   validates before applying — mirroring the same eligibility,
-   pricing and increment rules as the solo engine. This is
-   polling-based (~1s latency), not push-based, and if the host
-   goes stale the next connected player takes over as leader/host.
+   MULTIPLAYER MODULE (v2) — real WebRTC, no backend, no signup.
+   Uses PeerJS's free public broker purely for initial signaling;
+   once connected, browsers talk directly to each other. The host's
+   browser is the sole authority (star topology: every joiner
+   connects only to the host). This means real-time push updates
+   (no polling), but no host failover if the host's tab closes —
+   a fair trade for something that costs nothing and needs no
+   account. Reuses PLAYERS_RAW, TEAMS, TEAM_CODES, ROLE_LABEL,
+   NAT_LABEL, fmtMoney, shuffle, increment, roleTargets, countRoles,
+   deriveStats, seededRand, buildPlayerPool, gradeFromScore,
+   bestXI, show() from the solo engine above — untouched.
    ============================================================ */
 
 const MP = {
-  myId: null, myName: '', roomCode: null, isHost:false, isLeader:false,
-  room:null, auction:null, pollHandle:null, leaderHandle:null,
-  lastHeartbeatSent:0, lastChatIds:new Set(), lastReactIds:new Set(),
+  myId:null, myName:'', roomCode:null, isHost:false,
+  peer:null, hostConn:null, conns:{},
+  room:null, auction:null,
+  reconnectTimer:null, seenChatIds:new Set(), seenReactionIds:new Set(),
 };
 function uid(){ return 'u'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); }
 function genRoomCode(){
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no O/0, I/1
   let s=''; for(let i=0;i<6;i++) s+=chars[Math.floor(Math.random()*chars.length)];
-  return s;
+  return 'AUC'+s;
 }
 MP.myId = uid();
-function roomKey(code){ return 'mproom:'+code; }
-function auctionKey(code){ return 'mpauction:'+code; }
-function actionPrefix(code){ return 'mpaction:'+code+':'; }
-function chatPrefix(code){ return 'mpchat:'+code+':'; }
-function reactPrefix(code){ return 'mpreact:'+code+':'; }
-
-async function storSet(key,val,shared=true){ try{ return await window.storage.set(key, val, shared); }catch(e){ console.error('storSet',e); return null; } }
-async function storGet(key,shared=true){ try{ const r = await window.storage.get(key,shared); return r? r.value : null; }catch(e){ return null; } }
-async function storDel(key,shared=true){ try{ return await window.storage.delete(key,shared); }catch(e){ return null; } }
-async function storList(prefix,shared=true){ try{ const r = await window.storage.list(prefix,shared); return r? r.keys : []; }catch(e){ return []; } }
-async function jSet(key,obj,shared=true){ return storSet(key, JSON.stringify(obj), shared); }
-async function jGet(key,shared=true){ const v = await storGet(key,shared); if(v==null) return null; try{ return JSON.parse(v); }catch(e){ return null; } }
 
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function mpToast(text){
@@ -1578,7 +1562,7 @@ function mpToast(text){
   setTimeout(()=> el.remove(), 2400);
 }
 
-/* ---------------- MP auction rules (mirror the solo engine 1:1, but stateless over a passed-in AS object so it's JSON-safe) ---------------- */
+/* ---------------- MP auction rules (mirror the solo engine 1:1, stateless over a passed-in AS object) ---------------- */
 function mpEligible(AS, code, player){
   const team = AS.teams[code];
   if(team.squad.length >= AS.squadTarget) return false;
@@ -1647,287 +1631,8 @@ function mpAskPrice(AS){
 function mpIsAiControlled(room, code){
   const owner = room.players.find(p=>p.team===code);
   if(!owner) return true;
-  const age = Date.now()-owner.lastSeen;
-  if(age > 15000 && room.settings.disconnectBehavior==='ai_takeover') return true;
+  if(owner.connected===false && room.settings.disconnectBehavior==='ai_takeover') return true;
   return false;
-}
-
-/* ---------------- Home / entry wiring ---------------- */
-document.getElementById('btnMpEntry').addEventListener('click', ()=> show('screen-mp-entry'));
-document.getElementById('mpBackHome1').addEventListener('click', ()=> show('screen-home'));
-document.getElementById('mpTabCreate').addEventListener('click', ()=>{
-  document.getElementById('mpTabCreate').classList.add('active');
-  document.getElementById('mpTabJoin').classList.remove('active');
-  document.getElementById('mpCreatePane').style.display='block';
-  document.getElementById('mpJoinPane').style.display='none';
-});
-document.getElementById('mpTabJoin').addEventListener('click', ()=>{
-  document.getElementById('mpTabJoin').classList.add('active');
-  document.getElementById('mpTabCreate').classList.remove('active');
-  document.getElementById('mpJoinPane').style.display='block';
-  document.getElementById('mpCreatePane').style.display='none';
-});
-
-document.getElementById('btnMpCreateRoom').addEventListener('click', async ()=>{
-  const name = document.getElementById('mpCreateName').value.trim() || 'Host';
-  const code = genRoomCode();
-  MP.myName = name; MP.roomCode = code; MP.isHost = true;
-  const settings = {
-    mode: document.getElementById('mpSetMode').value,
-    maxHumans: Math.max(1,Math.min(10, parseInt(document.getElementById('mpSetMaxHumans').value)||10)),
-    timerSec: parseInt(document.getElementById('mpSetTimer').value),
-    aiAggro: parseInt(document.getElementById('mpSetAggro').value),
-    purseCap: parseInt(document.getElementById('mpSetPurse').value),
-    squadTarget: parseInt(document.getElementById('mpSetSquad').value),
-    overseasCap: parseInt(document.getElementById('mpSetOverseas').value),
-    disconnectBehavior: document.getElementById('mpSetDisc').value,
-    allowChat: document.getElementById('mpSetChat').checked,
-    allowReactions: document.getElementById('mpSetReact').checked,
-    allowPause: document.getElementById('mpSetPause').checked,
-  };
-  const room = {
-    code, hostId: MP.myId, phase:'lobby', teamsLocked:false, paused:false, pauseReason:'',
-    settings, players:[{id:MP.myId,name,team:null,ready:false,isHost:true,lastSeen:Date.now(),joinOrder:0}],
-    leaderId: MP.myId, leaderHeartbeat: Date.now(), createdAt: Date.now(),
-  };
-  await jSet(roomKey(code), room);
-  MP.room = room;
-  enterMpLobby();
-});
-
-document.getElementById('btnMpJoinRoom').addEventListener('click', async ()=>{
-  const codeRaw = document.getElementById('mpJoinCode').value.trim().toUpperCase();
-  const name = document.getElementById('mpJoinName').value.trim() || 'Player';
-  const statusEl = document.getElementById('mpJoinStatus');
-  if(!codeRaw){ statusEl.textContent = 'Enter a room code.'; return; }
-  const room = await jGet(roomKey(codeRaw));
-  if(!room){ statusEl.textContent = 'Room not found.'; return; }
-  if(room.phase !== 'lobby'){ statusEl.textContent = 'This auction has already started.'; return; }
-  if(room.players.length >= room.settings.maxHumans){ statusEl.textContent = 'Room is full.'; return; }
-  MP.myName = name; MP.roomCode = codeRaw; MP.isHost = false;
-  room.players.push({id:MP.myId,name,team:null,ready:false,isHost:false,lastSeen:Date.now(),joinOrder:room.players.length});
-  await jSet(roomKey(codeRaw), room);
-  MP.room = room;
-  enterMpLobby();
-});
-
-function enterMpLobby(){
-  show('screen-mp-lobby');
-  document.getElementById('mpLobbyCode').textContent = MP.roomCode;
-  startMpPolling();
-}
-
-/* ---------------- Polling loop (drives lobby -> auction -> results) ---------------- */
-function startMpPolling(){
-  stopMpPolling();
-  MP.pollHandle = setInterval(mpPollTick, 1200);
-  mpPollTick();
-}
-function stopMpPolling(){
-  if(MP.pollHandle) clearInterval(MP.pollHandle);
-  MP.pollHandle = null;
-}
-
-async function mpPollTick(){
-  if(!MP.roomCode) return;
-  const room = await jGet(roomKey(MP.roomCode));
-  if(!room){
-    stopMpPolling();
-    if(MP.leaderHandle){ clearInterval(MP.leaderHandle); MP.leaderHandle=null; }
-    alert('This room no longer exists.');
-    show('screen-home');
-    return;
-  }
-  MP.room = room;
-
-  const now = Date.now();
-  if(now - MP.lastHeartbeatSent > 3500){
-    MP.lastHeartbeatSent = now;
-    const me = room.players.find(p=>p.id===MP.myId);
-    if(me){ me.lastSeen = now; await jSet(roomKey(MP.roomCode), room); }
-  }
-
-  if(room.phase==='auction'){
-    const leaderStale = (now - (room.leaderHeartbeat||0)) > 6000;
-    if(leaderStale){
-      const connected = room.players.filter(p=> now-p.lastSeen < 9000).sort((a,b)=>a.joinOrder-b.joinOrder);
-      if(connected.length && connected[0].id===MP.myId){
-        room.leaderId = MP.myId;
-        room.leaderHeartbeat = now;
-        const hostPlayer = room.players.find(p=>p.id===room.hostId);
-        if(room.hostId!==MP.myId && (!hostPlayer || now-hostPlayer.lastSeen>9000)){
-          room.hostId = MP.myId; MP.isHost = true;
-          mpToast(MP.myName+' is now the host.');
-        }
-        await jSet(roomKey(MP.roomCode), room);
-      }
-    }
-    MP.isLeader = (room.leaderId === MP.myId);
-    if(MP.isLeader && !MP.leaderHandle){ MP.leaderHandle = setInterval(mpLeaderTick, 900); }
-    if(!MP.isLeader && MP.leaderHandle){ clearInterval(MP.leaderHandle); MP.leaderHandle=null; }
-  }
-
-  if(room.phase==='lobby'){
-    if(!document.getElementById('screen-mp-lobby').classList.contains('active')) show('screen-mp-lobby');
-    renderMpLobby();
-  } else if(room.phase==='auction'){
-    if(!document.getElementById('screen-mp-auction').classList.contains('active')) show('screen-mp-auction');
-    const auction = await jGet(auctionKey(MP.roomCode));
-    MP.auction = auction;
-    renderMpAuction();
-    await mpPollChatAndReactions();
-  } else if(room.phase==='results'){
-    if(!document.getElementById('screen-mp-results').classList.contains('active')) show('screen-mp-results');
-    const auction = await jGet(auctionKey(MP.roomCode));
-    MP.auction = auction;
-    renderMpResults();
-  }
-}
-
-/* ---------------- Lobby rendering + actions ---------------- */
-function renderMpLobby(){
-  const room = MP.room;
-  document.getElementById('mpPlayerCount').textContent = room.players.length;
-  document.getElementById('mpPlayerMax').textContent = room.settings.maxHumans;
-  const now = Date.now();
-  document.getElementById('mpPlayerList').innerHTML = room.players.map(p=>{
-    const age = now-p.lastSeen;
-    const dot = age<8000?'on':(age<20000?'slow':'off');
-    return `<div class="mp-player-row">
-      <div class="left"><span class="conn-dot ${dot}"></span>${escapeHtml(p.name)}${p.isHost?'<span class="host-badge">HOST</span>':''}</div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span class="team-tag" style="background:${p.team?TEAMS[p.team].color+'33':'rgba(255,255,255,0.06)'};color:${p.team?TEAMS[p.team].color:'var(--dimmer)'}">${p.team||'No Team'}</span>
-        <span class="ready-flag ${p.ready?'yes':'no'}">${p.ready?'🟢 Ready':'⚪ Not Ready'}</span>
-        ${(MP.isHost && p.id!==MP.myId) ? `<button class="mp-kick" data-pid="${p.id}">Kick</button>` : ''}
-      </div>
-    </div>`;
-  }).join('');
-  document.querySelectorAll('.mp-kick').forEach(btn=> btn.addEventListener('click', ()=> mpKickPlayer(btn.dataset.pid)));
-
-  const grid = document.getElementById('mpTeamGrid');
-  grid.innerHTML = TEAM_CODES.map(code=>{
-    const owner = room.players.find(p=>p.team===code);
-    const mine = owner && owner.id===MP.myId;
-    const taken = !!owner && !mine;
-    return `<div class="team-card mp-team-card ${taken?'taken':''} ${mine?'mine':''}" data-code="${code}" style="--tc:${TEAMS[code].color}">
-      <div class="dot"></div>
-      <div class="code">${code}</div>
-      <div class="full">${TEAMS[code].name}</div>
-      <div class="claim-lbl">${mine?'YOUR TEAM':(taken?'🔒 TAKEN BY '+escapeHtml(owner.name.toUpperCase()):'AVAILABLE')}</div>
-    </div>`;
-  }).join('');
-  grid.querySelectorAll('.mp-team-card').forEach(card=> card.addEventListener('click', ()=> mpSelectTeam(card.dataset.code)));
-
-  const me = room.players.find(p=>p.id===MP.myId);
-  document.getElementById('btnMpReady').textContent = (me&&me.ready)?'Cancel Ready':'Ready Up';
-  const allReady = room.players.length>0 && room.players.every(p=>p.ready);
-  document.getElementById('btnMpStart').disabled = !(MP.isHost && allReady);
-  document.getElementById('btnMpStart').style.display = MP.isHost ? 'block':'none';
-  document.getElementById('btnMpLockTeams').style.display = MP.isHost?'inline-block':'none';
-  document.getElementById('btnMpEndRoom').style.display = MP.isHost?'inline-block':'none';
-  document.getElementById('mpLobbyStatus').textContent = room.teamsLocked?'Teams are locked.':'';
-}
-
-async function mpSelectTeam(code){
-  const room = await jGet(roomKey(MP.roomCode));
-  if(!room) return;
-  if(room.teamsLocked){ mpToast('Teams are locked by the host.'); return; }
-  const owner = room.players.find(p=>p.team===code);
-  if(owner && owner.id!==MP.myId){ mpToast(TEAMS[code].name+' is already taken.'); return; }
-  const me = room.players.find(p=>p.id===MP.myId);
-  if(me) me.team = code;
-  await jSet(roomKey(MP.roomCode), room);
-  MP.room = room; renderMpLobby();
-}
-document.getElementById('btnMpReady').addEventListener('click', async ()=>{
-  const room = await jGet(roomKey(MP.roomCode));
-  const me = room.players.find(p=>p.id===MP.myId);
-  if(!me.team){ mpToast('Pick a franchise before readying up.'); return; }
-  me.ready = !me.ready;
-  await jSet(roomKey(MP.roomCode), room);
-  MP.room = room; renderMpLobby();
-});
-async function mpKickPlayer(pid){
-  const room = await jGet(roomKey(MP.roomCode));
-  room.players = room.players.filter(p=>p.id!==pid);
-  await jSet(roomKey(MP.roomCode), room);
-  MP.room = room; renderMpLobby();
-}
-document.getElementById('btnMpLockTeams').addEventListener('click', async ()=>{
-  const room = await jGet(roomKey(MP.roomCode));
-  room.teamsLocked = !room.teamsLocked;
-  await jSet(roomKey(MP.roomCode), room);
-  MP.room = room; renderMpLobby();
-});
-document.getElementById('btnMpEndRoom').addEventListener('click', async ()=>{
-  if(!confirm('End this room for everyone?')) return;
-  await storDel(roomKey(MP.roomCode));
-  await storDel(auctionKey(MP.roomCode));
-  mpCleanupAndGoHome();
-});
-document.getElementById('btnMpLeaveLobby').addEventListener('click', async ()=>{
-  const room = await jGet(roomKey(MP.roomCode));
-  if(room){ room.players = room.players.filter(p=>p.id!==MP.myId); await jSet(roomKey(MP.roomCode), room); }
-  mpCleanupAndGoHome();
-});
-function mpCleanupAndGoHome(){
-  stopMpPolling();
-  if(MP.leaderHandle){ clearInterval(MP.leaderHandle); MP.leaderHandle=null; }
-  MP.roomCode=null; MP.room=null; MP.auction=null; MP.isHost=false; MP.isLeader=false;
-  MP.lastChatIds=new Set(); MP.lastReactIds=new Set();
-  show('screen-home');
-}
-document.getElementById('btnMpBackHomeFinal').addEventListener('click', ()=> mpCleanupAndGoHome());
-
-/* ---------------- Starting the auction (host) ---------------- */
-document.getElementById('btnMpStart').addEventListener('click', async ()=>{
-  const room = await jGet(roomKey(MP.roomCode));
-  if(!room || room.hostId!==MP.myId) return;
-  if(!room.players.every(p=>p.ready)){ mpToast('Not everyone is ready.'); return; }
-  const s = room.settings;
-  const teams = {};
-  TEAM_CODES.forEach(code=>{ teams[code] = { purse: s.purseCap, squad: [] }; });
-  const pool = buildPlayerPool(s.mode);
-  const auction = {
-    code: MP.roomCode, purseCap:s.purseCap, squadTarget:s.squadTarget, overseasCap:s.overseasCap,
-    minSquad: Math.max(12, s.squadTarget-4), aiAggroMult: 0.6 + (s.aiAggro/100)*1.0,
-    teams, pool, poolIndex:0, unsoldList:[], phaseName:'main',
-    currentPlayer:null, bid:0, holder:null, holderName:null, out:[],
-    resolved:true, bidRoundsForPlayer:0, lastBidder:null, streakCount:0,
-    timerSec: s.timerSec, timerEndsAt:0, status:'running', history:[], eventLog:[],
-  };
-  room.phase='auction'; room.leaderId = MP.myId; room.leaderHeartbeat = Date.now();
-  await jSet(roomKey(MP.roomCode), room);
-  await jSet(auctionKey(MP.roomCode), auction);
-  MP.room = room; MP.auction = auction; MP.isLeader = true;
-  show('screen-mp-auction');
-  if(MP.leaderHandle) clearInterval(MP.leaderHandle);
-  MP.leaderHandle = setInterval(mpLeaderTick, 900);
-  await mpAdvancePlayerAsLeader();
-});
-
-async function mpAdvancePlayerAsLeader(){
-  const AS = await jGet(auctionKey(MP.roomCode));
-  if(!AS) return;
-  if(AS.poolIndex >= AS.pool.length){
-    if(AS.phaseName==='main' && AS.unsoldList.length>0){
-      AS.phaseName='unsold'; AS.pool = shuffle(AS.unsoldList); AS.unsoldList=[]; AS.poolIndex=0;
-    } else {
-      AS.status='finished'; AS.currentPlayer=null;
-      await jSet(auctionKey(MP.roomCode), AS);
-      const room = await jGet(roomKey(MP.roomCode));
-      if(room){ room.phase='results'; await jSet(roomKey(MP.roomCode), room); MP.room = room; }
-      return;
-    }
-  }
-  const player = AS.pool[AS.poolIndex];
-  AS.poolIndex++;
-  AS.currentPlayer = player; AS.bid = player.base; AS.holder = null; AS.holderName=null;
-  AS.out = TEAM_CODES.filter(code=>!mpEligible(AS, code, player));
-  AS.resolved = false; AS.bidRoundsForPlayer = 0; AS.lastBidder = null; AS.streakCount = 0;
-  AS.timerEndsAt = Date.now() + AS.timerSec*1000; AS.status='running';
-  await jSet(auctionKey(MP.roomCode), AS);
-  MP.auction = AS;
 }
 function mpPushEvent(AS, text){
   if(!AS.eventLog) AS.eventLog=[];
@@ -1980,73 +1685,370 @@ function mpResolveCurrent(AS){
   }
   AS.pauseStartedAt = Date.now();
 }
-
-let mpLeaderBusy = false;
-async function mpLeaderTick(){
-  if(mpLeaderBusy) return;
-  mpLeaderBusy = true;
-  try{
-    const room = await jGet(roomKey(MP.roomCode));
-    if(!room || room.phase!=='auction'){ mpLeaderBusy=false; return; }
-    room.leaderHeartbeat = Date.now();
-    await jSet(roomKey(MP.roomCode), room);
-    MP.room = room;
-    if(room.paused){ mpLeaderBusy=false; return; }
-
-    let AS = await jGet(auctionKey(MP.roomCode));
-    if(!AS || AS.status==='finished'){ mpLeaderBusy=false; return; }
-
-    if(AS.status==='sold_pause' || AS.status==='unsold_pause'){
-      if(Date.now() - (AS.pauseStartedAt||0) > 1900) await mpAdvancePlayerAsLeader();
-      mpLeaderBusy=false; return;
+function mpAdvancePlayerHost(){
+  const AS = MP.auction;
+  if(AS.poolIndex >= AS.pool.length){
+    if(AS.phaseName==='main' && AS.unsoldList.length>0){
+      AS.phaseName='unsold'; AS.pool = shuffle(AS.unsoldList); AS.unsoldList=[]; AS.poolIndex=0;
+    } else {
+      AS.status='finished'; AS.currentPlayer=null; MP.room.phase='results'; return;
     }
-    if(!AS.currentPlayer){ mpLeaderBusy=false; return; }
-
-    AS.out = TEAM_CODES.filter(code=>!mpEligible(AS, code, AS.currentPlayer));
-
-    const keys = await storList(actionPrefix(MP.roomCode));
-    if(keys && keys.length){
-      const actions = [];
-      for(const k of keys){ const a = await jGet(k); if(a) actions.push({key:k, ...a}); }
-      actions.sort((a,b)=>a.ts-b.ts);
-      for(const act of actions){ mpApplyAction(AS, room, act); await storDel(act.key); }
-    }
-
-    if(AS.resolved){ await jSet(auctionKey(MP.roomCode), AS); MP.auction=AS; mpLeaderBusy=false; return; }
-
-    const ask = mpAskPrice(AS);
-    const candidates = [];
-    TEAM_CODES.forEach(code=>{
-      if(AS.out.includes(code) || AS.holder===code) return;
-      if(!mpIsAiControlled(room, code)) return;
-      const willing = mpMaxWillingBid(AS, code, AS.currentPlayer);
-      if(willing >= ask) candidates.push({code, willing});
-    });
-    if(candidates.length>0 && Math.random()<0.7){
-      const weights = candidates.map(c=>Math.max(0.05,TEAMS[c.code].pers.aggr));
-      const totalW = weights.reduce((a,b)=>a+b,0);
-      let r = Math.random()*totalW;
-      let chosen = candidates[candidates.length-1].code;
-      for(let i=0;i<candidates.length;i++){ r-=weights[i]; if(r<=0){ chosen=candidates[i].code; break; } }
-      mpApplyBid(AS, chosen, null);
-      mpPushEvent(AS, `${TEAMS[chosen].name} 🤖 bids ${fmtMoney(AS.bid)} for ${AS.currentPlayer.n}`);
-    }
-
-    if(Date.now() >= AS.timerEndsAt) mpResolveCurrent(AS);
-
-    await jSet(auctionKey(MP.roomCode), AS);
-    MP.auction = AS;
-  } catch(e){ console.error('MP leader tick error', e); }
-  mpLeaderBusy = false;
+  }
+  const player = AS.pool[AS.poolIndex];
+  AS.poolIndex++;
+  AS.currentPlayer = player; AS.bid = player.base; AS.holder=null; AS.holderName=null;
+  AS.out = TEAM_CODES.filter(code=>!mpEligible(AS, code, player));
+  AS.resolved=false; AS.bidRoundsForPlayer=0; AS.lastBidder=null; AS.streakCount=0;
+  AS.timerEndsAt = Date.now()+AS.timerSec*1000; AS.status='running';
 }
 
-/* ---------------- Live auction rendering + player actions ---------------- */
-async function mpPostAction(type, payload){
-  const id = uid();
-  await jSet(actionPrefix(MP.roomCode)+id, {ts:Date.now(), playerId:MP.myId, type, payload:payload||{}});
+/* ---------------- Peer / WebRTC transport ---------------- */
+function mpBroadcastState(){
+  const payload = {type:'state', room:MP.room, auction:MP.auction};
+  Object.values(MP.conns).forEach(c=>{ try{ if(c.open) c.send(payload); }catch(e){} });
+  mpRenderCurrentScreen();
 }
-document.getElementById('btnMpBid').addEventListener('click', ()=> mpPostAction('bid'));
-document.getElementById('btnMpPass').addEventListener('click', ()=> mpPostAction('pass'));
+function mpSendToOne(pid, msg){
+  if(pid===MP.myId){ if(msg.type==='toast') mpToast(msg.text); return; }
+  const c = MP.conns[pid]; if(c && c.open){ try{ c.send(msg); }catch(e){} }
+}
+function mpSend(type, payload){
+  if(MP.isHost){ mpHostHandleMessage(null, {type, payload, id:MP.myId, name:MP.myName}); }
+  else if(MP.hostConn && MP.hostConn.open){ try{ MP.hostConn.send({type, payload, id:MP.myId, name:MP.myName}); }catch(e){} }
+  else mpToast('Not connected to the host right now.');
+}
+
+function mpInitHostPeer(code, onReady){
+  MP.peer = new Peer(code, { debug:1 });
+  MP.peer.on('open', ()=> onReady());
+  MP.peer.on('connection', conn=>{
+    conn.on('data', msg=> mpHostHandleMessage(conn, msg));
+    conn.on('close', ()=> mpHostHandlePeerLeave(conn.peer));
+  });
+  MP.peer.on('disconnected', ()=>{ try{ MP.peer.reconnect(); }catch(e){} });
+  MP.peer.on('error', err=>{
+    console.error('peer error', err);
+    if(err.type==='unavailable-id'){
+      mpToast('Room code collision — creating a fresh one...');
+      const code2 = genRoomCode();
+      MP.roomCode = code2; MP.room.code = code2;
+      mpInitHostPeer(code2, onReady);
+    } else {
+      mpToast('Connection error: '+err.type);
+    }
+  });
+}
+function mpHostHandlePeerLeave(peerId){
+  delete MP.conns[peerId];
+  const room = MP.room;
+  if(!room) return;
+  const p = room.players.find(x=>x.id===peerId);
+  if(p){
+    if(room.phase==='lobby'){ room.players = room.players.filter(x=>x.id!==peerId); }
+    else { p.connected = false; }
+  }
+  mpBroadcastState();
+}
+function mpHostHandleMessage(conn, msg){
+  const senderId = msg.id || (conn && conn.peer);
+  const room = MP.room;
+  if(!room) return;
+  switch(msg.type){
+    case 'hello': mpHostOnHello(conn, msg); return;
+    case 'select_team': mpHostSelectTeam(senderId, msg.payload.code); return;
+    case 'ready_toggle': mpHostReadyToggle(senderId); return;
+    case 'kick': if(senderId===room.hostId) mpHostKick(msg.payload.pid); return;
+    case 'lock_teams': if(senderId===room.hostId){ room.teamsLocked=!room.teamsLocked; mpBroadcastState(); } return;
+    case 'start_game': if(senderId===room.hostId) mpHostStartGame(); return;
+    case 'pause': if(senderId===room.hostId){ room.paused=true; room.pauseReason=(msg.payload&&msg.payload.reason)||''; mpBroadcastState(); } return;
+    case 'resume': if(senderId===room.hostId){ room.paused=false; room.pauseReason=''; mpBroadcastState(); } return;
+    case 'end_room': if(senderId===room.hostId) mpHostEndRoom(); return;
+    case 'leave': mpHostHandlePeerLeave(senderId); return;
+    case 'bid': mpApplyAction(MP.auction, room, {playerId:senderId, type:'bid', payload:{}}); mpBroadcastState(); return;
+    case 'pass': mpApplyAction(MP.auction, room, {playerId:senderId, type:'pass', payload:{}}); mpBroadcastState(); return;
+    case 'custombid': mpApplyAction(MP.auction, room, {playerId:senderId, type:'custombid', payload:msg.payload}); mpBroadcastState(); return;
+    case 'chat': mpHostAddChat(senderId, msg.payload.text); return;
+    case 'react': mpHostAddReaction(senderId, msg.payload.emoji); return;
+  }
+}
+function mpHostOnHello(conn, msg){
+  const room = MP.room;
+  const existing = room.players.find(p=>p.id===msg.id);
+  if(existing){
+    existing.connected = true; existing.name = msg.name || existing.name;
+    if(conn) MP.conns[msg.id] = conn;
+    mpBroadcastState();
+    return;
+  }
+  if(room.phase!=='lobby'){
+    if(conn){ conn.send({type:'error', text:'This auction already started — ask the host to add you next game.'}); setTimeout(()=>{ try{conn.close();}catch(e){} },300); }
+    return;
+  }
+  if(room.players.length >= room.settings.maxHumans){
+    if(conn){ conn.send({type:'error', text:'Room is full.'}); setTimeout(()=>{ try{conn.close();}catch(e){} },300); }
+    return;
+  }
+  if(conn) MP.conns[msg.id] = conn;
+  room.players.push({id:msg.id, name:msg.name||'Player', team:null, ready:false, isHost:false, connected:true, joinOrder:room.players.length});
+  mpBroadcastState();
+}
+function mpHostSelectTeam(pid, code){
+  const room = MP.room;
+  if(room.teamsLocked){ mpSendToOne(pid,{type:'toast', text:'Teams are locked by the host.'}); return; }
+  const owner = room.players.find(p=>p.team===code);
+  if(owner && owner.id!==pid){ mpSendToOne(pid,{type:'toast', text:TEAMS[code].name+' is already taken.'}); return; }
+  const me = room.players.find(p=>p.id===pid);
+  if(me) me.team = code;
+  mpBroadcastState();
+}
+function mpHostReadyToggle(pid){
+  const room = MP.room;
+  const me = room.players.find(p=>p.id===pid);
+  if(!me) return;
+  if(!me.team){ mpSendToOne(pid,{type:'toast', text:'Pick a franchise before readying up.'}); return; }
+  me.ready = !me.ready;
+  mpBroadcastState();
+}
+function mpHostKick(pid){
+  const room = MP.room;
+  room.players = room.players.filter(p=>p.id!==pid);
+  const c = MP.conns[pid];
+  if(c){ try{ c.send({type:'kicked'}); }catch(e){} setTimeout(()=>{ try{c.close();}catch(e){} },200); delete MP.conns[pid]; }
+  mpBroadcastState();
+}
+function mpHostEndRoom(){
+  Object.values(MP.conns).forEach(c=>{ try{ c.send({type:'room_ended'}); }catch(e){} });
+  setTimeout(()=>{ try{ MP.peer && MP.peer.destroy(); }catch(e){} }, 250);
+  mpCleanupAndGoHome();
+}
+function mpHostAddChat(pid, text){
+  const room = MP.room;
+  const p = room.players.find(x=>x.id===pid);
+  const name = p ? p.name : 'Unknown';
+  if(!room.chat) room.chat=[];
+  room.chat.push({id:uid(), ts:Date.now(), name, text:String(text||'').slice(0,200)});
+  room.chat = room.chat.slice(-60);
+  mpBroadcastState();
+}
+function mpHostAddReaction(pid, emoji){
+  const room = MP.room;
+  const p = room.players.find(x=>x.id===pid);
+  const name = p ? p.name : 'Unknown';
+  if(!room.reactions) room.reactions=[];
+  room.reactions.push({id:uid(), ts:Date.now(), name, emoji});
+  room.reactions = room.reactions.slice(-20);
+  mpBroadcastState();
+}
+function mpHostStartGame(){
+  const room = MP.room;
+  if(!room.players.every(p=>p.ready)){ mpSendToOne(room.hostId,{type:'toast', text:'Not everyone is ready.'}); return; }
+  const s = room.settings;
+  const teams = {};
+  TEAM_CODES.forEach(code=>{ teams[code] = { purse: s.purseCap, squad: [] }; });
+  const pool = buildPlayerPool(s.mode);
+  MP.auction = {
+    code: MP.roomCode, purseCap:s.purseCap, squadTarget:s.squadTarget, overseasCap:s.overseasCap,
+    minSquad: Math.max(12, s.squadTarget-4), aiAggroMult: 0.6 + (s.aiAggro/100)*1.0,
+    teams, pool, poolIndex:0, unsoldList:[], phaseName:'main',
+    currentPlayer:null, bid:0, holder:null, holderName:null, out:[],
+    resolved:true, bidRoundsForPlayer:0, lastBidder:null, streakCount:0,
+    timerSec: s.timerSec, timerEndsAt:0, status:'running', history:[], eventLog:[],
+  };
+  room.phase='auction';
+  mpAdvancePlayerHost();
+  mpHostLoopStart();
+  mpBroadcastState();
+}
+let mpHostLoopHandle = null;
+function mpHostLoopStart(){
+  if(mpHostLoopHandle) clearInterval(mpHostLoopHandle);
+  mpHostLoopHandle = setInterval(mpHostTick, 900);
+}
+function mpHostTick(){
+  if(!MP.isHost || !MP.room || MP.room.phase!=='auction') return;
+  if(MP.room.paused) return;
+  const AS = MP.auction;
+  if(!AS || AS.status==='finished') return;
+  if(AS.status==='sold_pause' || AS.status==='unsold_pause'){
+    if(Date.now()-(AS.pauseStartedAt||0) > 1900){ mpAdvancePlayerHost(); mpBroadcastState(); }
+    return;
+  }
+  if(!AS.currentPlayer) return;
+  AS.out = TEAM_CODES.filter(code=>!mpEligible(AS, code, AS.currentPlayer));
+  if(AS.resolved) return;
+  let changed = false;
+  const ask = mpAskPrice(AS);
+  const candidates = [];
+  TEAM_CODES.forEach(code=>{
+    if(AS.out.includes(code) || AS.holder===code) return;
+    if(!mpIsAiControlled(MP.room, code)) return;
+    const willing = mpMaxWillingBid(AS, code, AS.currentPlayer);
+    if(willing >= ask) candidates.push({code, willing});
+  });
+  if(candidates.length>0 && Math.random()<0.6){
+    const weights = candidates.map(c=>Math.max(0.05,TEAMS[c.code].pers.aggr));
+    const totalW = weights.reduce((a,b)=>a+b,0);
+    let r = Math.random()*totalW;
+    let chosen = candidates[candidates.length-1].code;
+    for(let i=0;i<candidates.length;i++){ r-=weights[i]; if(r<=0){ chosen=candidates[i].code; break; } }
+    mpApplyBid(AS, chosen, null);
+    mpPushEvent(AS, `${TEAMS[chosen].name} 🤖 bids ${fmtMoney(AS.bid)} for ${AS.currentPlayer.n}`);
+    changed = true;
+  }
+  if(Date.now() >= AS.timerEndsAt){ mpResolveCurrent(AS); changed = true; }
+  if(changed) mpBroadcastState();
+}
+
+/* ---------------- Client (joiner) connection ---------------- */
+function mpJoinRoom(code, name){
+  MP.roomCode = code; MP.isHost=false; MP.myName=name;
+  MP.peer = new Peer(MP.myId, { debug:1 });
+  MP.peer.on('open', ()=> mpConnectToHost());
+  MP.peer.on('disconnected', ()=>{ try{ MP.peer.reconnect(); }catch(e){} });
+  MP.peer.on('error', err=>{
+    document.getElementById('mpJoinStatus').textContent = err.type==='peer-unavailable' ? 'Room not found.' : ('Connection error: '+err.type);
+  });
+}
+function mpConnectToHost(){
+  const conn = MP.peer.connect(MP.roomCode, { reliable:true });
+  mpAttachClientConn(conn);
+}
+function mpAttachClientConn(conn){
+  MP.hostConn = conn;
+  conn.on('open', ()=>{
+    conn.send({type:'hello', name:MP.myName, id:MP.myId});
+    if(MP.reconnectTimer){ clearInterval(MP.reconnectTimer); MP.reconnectTimer=null; }
+    if(MP.room && MP.room.phase && MP.room.phase!=='lobby') mpToast('Reconnected!');
+  });
+  conn.on('data', msg=> mpClientHandleMessage(msg));
+  conn.on('close', ()=>{ if(MP.roomCode){ mpToast('Lost connection to host — reconnecting...'); mpScheduleReconnect(); } });
+  conn.on('error', ()=>{ if(!MP.room) document.getElementById('mpJoinStatus').textContent = 'Room not found.'; });
+}
+function mpScheduleReconnect(){
+  if(MP.reconnectTimer) return;
+  MP.reconnectTimer = setInterval(()=>{
+    if(!MP.peer || MP.peer.destroyed || !MP.roomCode) return;
+    mpConnectToHost();
+  }, 3000);
+}
+function mpClientHandleMessage(msg){
+  if(msg.type==='state'){ MP.room = msg.room; MP.auction = msg.auction; mpRenderCurrentScreen(); }
+  else if(msg.type==='toast'){ mpToast(msg.text); }
+  else if(msg.type==='kicked'){ alert('You were removed from the room by the host.'); mpCleanupAndGoHome(); }
+  else if(msg.type==='room_ended'){ alert('The host ended this room.'); mpCleanupAndGoHome(); }
+  else if(msg.type==='error'){ document.getElementById('mpJoinStatus').textContent = msg.text; mpCleanupAndGoHome(); }
+}
+
+/* ---------------- Screen wiring ---------------- */
+function mpCleanupAndGoHome(){
+  if(mpHostLoopHandle){ clearInterval(mpHostLoopHandle); mpHostLoopHandle=null; }
+  if(MP.reconnectTimer){ clearInterval(MP.reconnectTimer); MP.reconnectTimer=null; }
+  try{ if(MP.peer) MP.peer.destroy(); }catch(e){}
+  MP.peer=null; MP.hostConn=null; MP.conns={};
+  MP.roomCode=null; MP.room=null; MP.auction=null; MP.isHost=false;
+  MP.seenChatIds=new Set(); MP.seenReactionIds=new Set();
+  show('screen-home');
+}
+document.getElementById('btnMpEntry').addEventListener('click', ()=> show('screen-mp-entry'));
+document.getElementById('mpBackHome1').addEventListener('click', ()=> show('screen-home'));
+document.getElementById('mpTabCreate').addEventListener('click', ()=>{
+  document.getElementById('mpTabCreate').classList.add('active');
+  document.getElementById('mpTabJoin').classList.remove('active');
+  document.getElementById('mpCreatePane').style.display='block';
+  document.getElementById('mpJoinPane').style.display='none';
+});
+document.getElementById('mpTabJoin').addEventListener('click', ()=>{
+  document.getElementById('mpTabJoin').classList.add('active');
+  document.getElementById('mpTabCreate').classList.remove('active');
+  document.getElementById('mpJoinPane').style.display='block';
+  document.getElementById('mpCreatePane').style.display='none';
+});
+document.getElementById('btnMpCreateRoom').addEventListener('click', ()=>{
+  if(typeof Peer==='undefined'){ mpToast('Networking library failed to load — check your internet connection and refresh.'); return; }
+  const name = document.getElementById('mpCreateName').value.trim() || 'Host';
+  MP.myName = name; MP.isHost = true;
+  const settings = {
+    mode: document.getElementById('mpSetMode').value,
+    maxHumans: Math.max(1,Math.min(10, parseInt(document.getElementById('mpSetMaxHumans').value)||10)),
+    timerSec: parseInt(document.getElementById('mpSetTimer').value),
+    aiAggro: parseInt(document.getElementById('mpSetAggro').value),
+    purseCap: parseInt(document.getElementById('mpSetPurse').value),
+    squadTarget: parseInt(document.getElementById('mpSetSquad').value),
+    overseasCap: parseInt(document.getElementById('mpSetOverseas').value),
+    disconnectBehavior: document.getElementById('mpSetDisc').value,
+    allowChat: document.getElementById('mpSetChat').checked,
+    allowReactions: document.getElementById('mpSetReact').checked,
+    allowPause: document.getElementById('mpSetPause').checked,
+  };
+  const code = genRoomCode();
+  MP.roomCode = code;
+  MP.room = {
+    code, hostId: MP.myId, phase:'lobby', teamsLocked:false, paused:false, pauseReason:'',
+    settings, chat:[], reactions:[],
+    players:[{id:MP.myId,name,team:null,ready:false,isHost:true,connected:true,joinOrder:0}],
+  };
+  mpInitHostPeer(code, ()=>{ mpBroadcastState(); });
+});
+document.getElementById('btnMpJoinRoom').addEventListener('click', ()=>{
+  if(typeof Peer==='undefined'){ document.getElementById('mpJoinStatus').textContent='Networking library failed to load — refresh and try again.'; return; }
+  const codeRaw = document.getElementById('mpJoinCode').value.trim().toUpperCase();
+  const name = document.getElementById('mpJoinName').value.trim() || 'Player';
+  if(!codeRaw){ document.getElementById('mpJoinStatus').textContent = 'Enter a room code.'; return; }
+  document.getElementById('mpJoinStatus').textContent = 'Connecting...';
+  mpJoinRoom(codeRaw, name);
+});
+
+/* ---------------- Lobby rendering + actions ---------------- */
+function renderMpLobby(){
+  const room = MP.room;
+  document.getElementById('mpLobbyCode').textContent = MP.roomCode;
+  document.getElementById('mpPlayerCount').textContent = room.players.length;
+  document.getElementById('mpPlayerMax').textContent = room.settings.maxHumans;
+  document.getElementById('mpPlayerList').innerHTML = room.players.map(p=>{
+    const dot = p.connected===false ? 'off' : 'on';
+    return `<div class="mp-player-row">
+      <div class="left"><span class="conn-dot ${dot}"></span>${escapeHtml(p.name)}${p.isHost?'<span class="host-badge">HOST</span>':''}</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="team-tag" style="background:${p.team?TEAMS[p.team].color+'33':'rgba(255,255,255,0.06)'};color:${p.team?TEAMS[p.team].color:'var(--dimmer)'}">${p.team||'No Team'}</span>
+        <span class="ready-flag ${p.ready?'yes':'no'}">${p.ready?'🟢 Ready':'⚪ Not Ready'}</span>
+        ${(MP.isHost && p.id!==MP.myId) ? `<button class="mp-kick" data-pid="${p.id}">Kick</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('.mp-kick').forEach(btn=> btn.addEventListener('click', ()=> mpSend('kick', {pid:btn.dataset.pid})));
+
+  const grid = document.getElementById('mpTeamGrid');
+  grid.innerHTML = TEAM_CODES.map(code=>{
+    const owner = room.players.find(p=>p.team===code);
+    const mine = owner && owner.id===MP.myId;
+    const taken = !!owner && !mine;
+    return `<div class="team-card mp-team-card ${taken?'taken':''} ${mine?'mine':''}" data-code="${code}" style="--tc:${TEAMS[code].color}">
+      <div class="dot"></div>
+      <div class="code">${code}</div>
+      <div class="full">${TEAMS[code].name}</div>
+      <div class="claim-lbl">${mine?'YOUR TEAM':(taken?'🔒 TAKEN BY '+escapeHtml(owner.name.toUpperCase()):'AVAILABLE')}</div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.mp-team-card').forEach(card=> card.addEventListener('click', ()=> mpSend('select_team', {code:card.dataset.code})));
+
+  const me = room.players.find(p=>p.id===MP.myId);
+  document.getElementById('btnMpReady').textContent = (me&&me.ready)?'Cancel Ready':'Ready Up';
+  const allReady = room.players.length>0 && room.players.every(p=>p.ready);
+  document.getElementById('btnMpStart').disabled = !(MP.isHost && allReady);
+  document.getElementById('btnMpStart').style.display = MP.isHost ? 'block':'none';
+  document.getElementById('btnMpLockTeams').style.display = MP.isHost?'inline-block':'none';
+  document.getElementById('btnMpEndRoom').style.display = MP.isHost?'inline-block':'none';
+  document.getElementById('mpLobbyStatus').textContent = room.teamsLocked?'Teams are locked.':'';
+}
+document.getElementById('btnMpReady').addEventListener('click', ()=> mpSend('ready_toggle', {}));
+document.getElementById('btnMpLockTeams').addEventListener('click', ()=> mpSend('lock_teams', {}));
+document.getElementById('btnMpEndRoom').addEventListener('click', ()=>{ if(confirm('End this room for everyone?')) mpSend('end_room', {}); });
+document.getElementById('btnMpLeaveLobby').addEventListener('click', ()=>{ mpSend('leave', {}); mpCleanupAndGoHome(); });
+document.getElementById('btnMpStart').addEventListener('click', ()=> mpSend('start_game', {}));
+
+/* ---------------- Live auction rendering + actions ---------------- */
+document.getElementById('btnMpBid').addEventListener('click', ()=> mpSend('bid', {}));
+document.getElementById('btnMpPass').addEventListener('click', ()=> mpSend('pass', {}));
 document.getElementById('btnMpCustomBid').addEventListener('click', ()=>{
   document.getElementById('mpCustomBidInput').value='';
   document.getElementById('mpCustomBidOverlay').classList.add('show');
@@ -2056,7 +2058,7 @@ document.getElementById('btnMpConfirmCustom').addEventListener('click', ()=>{
   const val = parseInt(document.getElementById('mpCustomBidInput').value);
   document.getElementById('mpCustomBidOverlay').classList.remove('show');
   if(!val) return;
-  mpPostAction('custombid', {amount: val});
+  mpSend('custombid', {amount: val});
 });
 document.getElementById('btnMpViewSquad').addEventListener('click', ()=>{
   const room = MP.room, AS = MP.auction;
@@ -2072,68 +2074,44 @@ document.getElementById('btnMpViewSquad').addEventListener('click', ()=>{
   }
   document.getElementById('squadOverlay').classList.add('show');
 });
-document.getElementById('btnMpPause').addEventListener('click', async ()=>{
+document.getElementById('btnMpPause').addEventListener('click', ()=>{
   const reason = prompt('Reason for pausing (optional):','') || '';
-  const room = await jGet(roomKey(MP.roomCode));
-  if(!room || room.hostId!==MP.myId) return;
-  room.paused = true; room.pauseReason = reason;
-  await jSet(roomKey(MP.roomCode), room); MP.room = room;
+  mpSend('pause', {reason});
 });
-document.getElementById('btnMpResume').addEventListener('click', async ()=>{
-  const room = await jGet(roomKey(MP.roomCode));
-  if(!room || room.hostId!==MP.myId) return;
-  room.paused = false; room.pauseReason='';
-  await jSet(roomKey(MP.roomCode), room); MP.room = room;
-});
+document.getElementById('btnMpResume').addEventListener('click', ()=> mpSend('resume', {}));
 document.getElementById('btnMpLeaveAuction').addEventListener('click', ()=>{
-  if(confirm('Leave the room? You can be replaced by AI takeover depending on room settings.')) mpCleanupAndGoHome();
+  if(confirm('Leave the room?')){ mpSend('leave', {}); mpCleanupAndGoHome(); }
 });
-document.getElementById('btnMpChatSend').addEventListener('click', mpSendChat);
-document.getElementById('mpChatInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') mpSendChat(); });
-async function mpSendChat(){
+function mpSendChat(){
   const input = document.getElementById('mpChatInput');
   const text = input.value.trim();
   if(!text) return;
   input.value='';
-  await jSet(chatPrefix(MP.roomCode)+uid(), {ts:Date.now(), playerId:MP.myId, name:MP.myName, text:text.slice(0,200)});
+  mpSend('chat', {text});
 }
+document.getElementById('btnMpChatSend').addEventListener('click', mpSendChat);
+document.getElementById('mpChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') mpSendChat(); });
 document.querySelectorAll('#mpReactRow button').forEach(btn=>{
-  btn.addEventListener('click', async ()=>{
-    await jSet(reactPrefix(MP.roomCode)+uid(), {ts:Date.now(), playerId:MP.myId, name:MP.myName, emoji:btn.dataset.e});
-  });
+  btn.addEventListener('click', ()=> mpSend('react', {emoji: btn.dataset.e}));
 });
 
-async function mpPollChatAndReactions(){
-  document.getElementById('mpChatWrap').style.display = MP.room.settings.allowChat ? 'flex':'none';
-  document.getElementById('mpReactRow').style.display = MP.room.settings.allowReactions ? 'flex':'none';
-
-  const keys = await storList(chatPrefix(MP.roomCode));
-  const newKeys = keys.filter(k=>!MP.lastChatIds.has(k));
-  if(newKeys.length){
-    for(const k of newKeys){
-      const msg = await jGet(k);
-      if(msg){
-        const el = document.createElement('div');
-        el.className='msg';
-        el.innerHTML = `<b>${escapeHtml(msg.name)}:</b> ${escapeHtml(msg.text)}`;
-        document.getElementById('mpChatFeed').appendChild(el);
-      }
-      MP.lastChatIds.add(k);
-    }
-    const feed = document.getElementById('mpChatFeed');
-    feed.scrollTop = feed.scrollHeight;
-  }
-  const rkeys = await storList(reactPrefix(MP.roomCode));
-  const newRKeys = rkeys.filter(k=>!MP.lastReactIds.has(k));
-  for(const k of newRKeys){
-    const r = await jGet(k);
-    if(r) mpToast(`${r.name} ${r.emoji}`);
-    MP.lastReactIds.add(k);
-  }
-  if(MP.isLeader && Math.random()<0.15){
-    if(keys.length>60) for(const k of keys.slice(0,keys.length-60)) await storDel(k);
-    if(rkeys.length>40) for(const k of rkeys.slice(0,rkeys.length-40)) await storDel(k);
-  }
+function mpDiffAndRenderChat(room){
+  if(!room.chat) return;
+  const feed = document.getElementById('mpChatFeed');
+  const newOnes = room.chat.filter(m=>!MP.seenChatIds.has(m.id));
+  newOnes.forEach(m=>{
+    MP.seenChatIds.add(m.id);
+    const el = document.createElement('div'); el.className='msg';
+    el.innerHTML = `<b>${escapeHtml(m.name)}:</b> ${escapeHtml(m.text)}`;
+    feed.appendChild(el);
+  });
+  if(newOnes.length) feed.scrollTop = feed.scrollHeight;
+}
+function mpDiffAndToastReactions(room){
+  if(!room.reactions) return;
+  room.reactions.forEach(r=>{
+    if(!MP.seenReactionIds.has(r.id)){ MP.seenReactionIds.add(r.id); mpToast(`${r.name} ${r.emoji}`); }
+  });
 }
 
 function renderMpAuction(){
@@ -2218,15 +2196,13 @@ function renderMpAuction(){
     youWrap.innerHTML = `<div class="mini-team"><div class="row1"><span class="tname">Spectating</span></div><div class="subrow"><span>No team assigned</span></div></div>`;
   }
 
-  const now = Date.now();
   document.getElementById('mpAiPanelWrap').innerHTML = TEAM_CODES.filter(c=>c!==myTeamCode).map(code=>{
     const team = AS.teams[code];
     const owner = room.players.find(p=>p.team===code);
     const leading = AS.holder===code;
     let tag;
     if(owner){
-      const age = now-owner.lastSeen;
-      const dot = age<8000?'on':(age<20000?'slow':'off');
+      const dot = owner.connected===false ? 'off':'on';
       const takeover = mpIsAiControlled(room, code);
       tag = `<span class="conn-dot ${dot}"></span>${escapeHtml(owner.name)}${takeover?' <span class="ai-tag">AI TAKEOVER</span>':' <span class="human-tag">HUMAN</span>'}`;
     } else { tag = `<span class="ai-tag">AI</span>`; }
@@ -2244,7 +2220,27 @@ function renderMpAuction(){
     evWrap.innerHTML = (AS.eventLog||[]).map(e=>`<div class="line">${e.text}</div>`).join('');
     evWrap.dataset.lastRendered = stamp;
   }
+
+  document.getElementById('mpChatWrap').style.display = room.settings.allowChat ? 'flex':'none';
+  document.getElementById('mpReactRow').style.display = room.settings.allowReactions ? 'flex':'none';
 }
+
+function mpRenderCurrentScreen(){
+  if(!MP.room) return;
+  if(MP.room.phase==='lobby'){
+    if(!document.getElementById('screen-mp-lobby').classList.contains('active')) show('screen-mp-lobby');
+    renderMpLobby();
+  } else if(MP.room.phase==='auction'){
+    if(!document.getElementById('screen-mp-auction').classList.contains('active')) show('screen-mp-auction');
+    renderMpAuction();
+    mpDiffAndRenderChat(MP.room);
+    mpDiffAndToastReactions(MP.room);
+  } else if(MP.room.phase==='results'){
+    if(!document.getElementById('screen-mp-results').classList.contains('active')) show('screen-mp-results');
+    renderMpResults();
+  }
+}
+let mpTimerRenderHandle = setInterval(()=>{ if(MP.room && MP.room.phase==='auction') renderMpAuction(); }, 500);
 
 /* ---------------- Multiplayer results screen ---------------- */
 function mpTeamAnalytics(AS, code){
@@ -2312,8 +2308,10 @@ function renderMpResults(){
       <tbody>${rows || '<tr><td colspan="4" style="color:var(--dimmer);padding:10px;">No purchases.</td></tr>'}</tbody></table></div>`;
   }).join('');
 }
+document.getElementById('btnMpBackHomeFinal').addEventListener('click', ()=> mpCleanupAndGoHome());
 
 document.getElementById('btnSkip').addEventListener('click', ()=>{
+
   if(!G || G.resolved) return;
   clearPendingTimer();
   G.out.add(G.userTeam);
