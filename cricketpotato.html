@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Bowled Over — Cricket Hot Potato</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pitch-dark:#06210f;
+    --pitch:#0d3d1f;
+    --pitch-light:#1a6b39;
+    --floodlight:#fff6da;
+    --leather:#a8321f;
+    --leather-light:#d6462d;
+    --clay:#c98a3a;
+    --cream:#f3ecd8;
+    --danger:#ff3b30;
+    --ink:#07130c;
+    --line: rgba(243,236,216,0.14);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    min-height:100vh;
+    font-family:'Oswald',sans-serif;
+    color:var(--cream);
+    background:
+      radial-gradient(ellipse 120% 60% at 50% -10%, rgba(255,246,218,0.10), transparent 55%),
+      radial-gradient(ellipse 90% 50% at 50% 110%, rgba(0,0,0,0.55), transparent 60%),
+      linear-gradient(180deg, var(--pitch-dark) 0%, var(--pitch) 55%, var(--pitch-dark) 100%);
+    overflow-x:hidden;
+    display:flex;
+    justify-content:center;
+  }
+  /* mown-pitch stripes */
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background: repeating-linear-gradient(100deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 40px, transparent 40px, transparent 80px);
+    pointer-events:none;
+    z-index:0;
+  }
+  #app{
+    position:relative;
+    z-index:1;
+    width:100%;
+    max-width:480px;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    padding:22px 20px 34px;
+  }
+  .eyebrow{
+    font-family:'Share Tech Mono',monospace;
+    letter-spacing:.28em;
+    font-size:11px;
+    color:var(--clay);
+    text-transform:uppercase;
+    text-align:center;
+  }
+  h1.brand{
+    font-family:'Anton', sans-serif;
+    font-size:clamp(30px,9vw,42px);
+    letter-spacing:.01em;
+    text-align:center;
+    margin:4px 0 2px;
+    text-transform:uppercase;
+    color:var(--floodlight);
+    text-shadow:0 0 22px rgba(255,246,218,0.35), 0 3px 0 rgba(0,0,0,0.4);
+  }
+  .sub{
+    text-align:center;
+    color:rgba(243,236,216,0.6);
+    font-size:14px;
+    margin-bottom:18px;
+    font-weight:400;
+  }
+  .card{
+    background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:20px;
+    backdrop-filter:blur(2px);
+  }
+  .screen{ display:none; flex-direction:column; gap:16px; flex:1; }
+  .screen.active{ display:flex; }
+
+  label{
+    font-size:12px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:rgba(243,236,216,0.55);
+    display:block;
+    margin-bottom:6px;
+  }
+  input[type=text], input[type=number]{
+    width:100%;
+    background:rgba(6,20,10,0.55);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:12px 14px;
+    color:var(--cream);
+    font-family:'Oswald',sans-serif;
+    font-size:16px;
+    outline:none;
+  }
+  input[type=text]:focus, input[type=number]:focus{ border-color:var(--clay); }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+  .btn{
+    appearance:none;
+    border:none;
+    border-radius:14px;
+    padding:16px 18px;
+    font-family:'Oswald',sans-serif;
+    font-weight:600;
+    font-size:16px;
+    letter-spacing:.03em;
+    text-transform:uppercase;
+    cursor:pointer;
+    transition:transform .08s ease, filter .15s ease;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn-primary{
+    background:linear-gradient(180deg, var(--leather-light), var(--leather));
+    color:#fff2ea;
+    box-shadow:0 6px 0 #7a2114, 0 10px 24px rgba(168,50,31,0.35);
+  }
+  .btn-primary:active{ box-shadow:0 3px 0 #7a2114; }
+  .btn-ghost{
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--cream);
+  }
+  .btn-gold{
+    background:linear-gradient(180deg,#e8b25a,var(--clay));
+    color:#2a1a05;
+    box-shadow:0 6px 0 #8a5a1f, 0 10px 24px rgba(201,138,58,0.35);
+  }
+  .btn-gold:active{ box-shadow:0 3px 0 #8a5a1f; }
+  .btn-block{ width:100%; }
+
+  /* Scoreboard */
+  .scoreboard{
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    align-items:center;
+    background:var(--ink);
+    border:2px solid rgba(255,246,218,0.15);
+    border-radius:14px;
+    padding:14px 10px;
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.6);
+  }
+  .score-team{ text-align:center; min-width:0; }
+  .score-team .name{
+    font-size:12px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:rgba(243,236,216,0.7);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .score-team .num{
+    font-family:'Share Tech Mono',monospace;
+    font-size:38px;
+    color:#8fffb0;
+    text-shadow:0 0 14px rgba(143,255,176,0.55);
+    line-height:1;
+  }
+  .score-vs{
+    font-family:'Share Tech Mono',monospace;
+    color:rgba(243,236,216,0.35);
+    font-size:12px;
+    padding:0 8px;
+  }
+
+  /* Ready screen */
+  .holder-banner{
+    text-align:center;
+    padding:26px 16px;
+    border-radius:18px;
+    background:linear-gradient(180deg, rgba(201,138,58,0.18), rgba(201,138,58,0.03));
+    border:1px solid rgba(201,138,58,0.4);
+  }
+  .holder-banner .tag{
+    font-family:'Share Tech Mono',monospace;
+    letter-spacing:.2em;
+    font-size:12px;
+    color:var(--clay);
+    text-transform:uppercase;
+  }
+  .holder-banner .team{
+    font-family:'Anton',sans-serif;
+    font-size:clamp(28px,9vw,40px);
+    color:var(--floodlight);
+    margin:6px 0;
+    text-transform:uppercase;
+  }
+  .holder-banner .hint{
+    font-size:14px;
+    color:rgba(243,236,216,0.65);
+  }
+
+  /* Play screen */
+  .play-wrap{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    justify-content:center;
+    align-items:center;
+    text-align:center;
+    position:relative;
+    padding:10px 4px;
+  }
+  .heat-ring{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    border-radius:24px;
+    box-shadow: inset 0 0 40px 0 rgba(255,59,48,0);
+    transition:box-shadow .12s ease;
+  }
+  .clue-tag{
+    font-family:'Share Tech Mono',monospace;
+    letter-spacing:.22em;
+    font-size:11px;
+    color:rgba(243,236,216,0.5);
+    text-transform:uppercase;
+  }
+  .player-name{
+    font-family:'Anton',sans-serif;
+    font-size:clamp(34px,10.5vw,54px);
+    line-height:1.05;
+    color:var(--floodlight);
+    text-transform:uppercase;
+    text-shadow:0 0 30px rgba(255,246,218,0.25);
+    padding:0 6px;
+  }
+  .holder-pill{
+    font-size:13px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--clay);
+    background:rgba(201,138,58,0.12);
+    border:1px solid rgba(201,138,58,0.35);
+    padding:6px 14px;
+    border-radius:999px;
+  }
+  .pulse-dot{
+    width:10px;height:10px;border-radius:50%;
+    background:var(--danger);
+    display:inline-block;
+    margin-right:6px;
+    box-shadow:0 0 10px var(--danger);
+    animation:blink 1s infinite;
+  }
+  @keyframes blink{ 50%{opacity:.25;} }
+
+  .stack{ display:flex; flex-direction:column; gap:10px; }
+
+  /* Buzzer screen */
+  .buzz-flash{
+    text-align:center;
+    padding:30px 16px;
+    border-radius:18px;
+    background:linear-gradient(180deg, rgba(255,59,48,0.22), rgba(255,59,48,0.04));
+    border:1px solid rgba(255,59,48,0.5);
+  }
+  .buzz-flash .siren{
+    font-family:'Anton',sans-serif;
+    font-size:clamp(30px,10vw,44px);
+    color:var(--danger);
+    text-transform:uppercase;
+    text-shadow:0 0 24px rgba(255,59,48,0.6);
+    margin-bottom:6px;
+  }
+  .buzz-flash .who{
+    font-size:16px;
+    color:rgba(243,236,216,0.8);
+  }
+  .buzz-flash .who b{ color:var(--floodlight); }
+
+  .win-flash{
+    text-align:center;
+    padding:36px 16px;
+    border-radius:18px;
+    background:linear-gradient(180deg, rgba(143,255,176,0.16), rgba(143,255,176,0.03));
+    border:1px solid rgba(143,255,176,0.4);
+  }
+  .win-flash .trophy{ font-size:44px; margin-bottom:8px; }
+  .win-flash .team{
+    font-family:'Anton',sans-serif;
+    font-size:clamp(28px,9vw,40px);
+    color:#8fffb0;
+    text-transform:uppercase;
+    text-shadow:0 0 24px rgba(143,255,176,0.5);
+  }
+
+  .footer-note{
+    text-align:center;
+    font-size:12px;
+    color:rgba(243,236,216,0.35);
+    margin-top:auto;
+    padding-top:18px;
+  }
+
+  .rules{
+    font-size:13.5px;
+    line-height:1.55;
+    color:rgba(243,236,216,0.75);
+  }
+  .rules b{ color:var(--floodlight); }
+  .rules ol{ padding-left:18px; margin:8px 0 0; }
+  .rules li{ margin-bottom:6px; }
+
+  .link-small{
+    text-align:center;
+    font-size:13px;
+    color:rgba(243,236,216,0.55);
+    text-decoration:underline;
+    cursor:pointer;
+    background:none; border:none;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .pulse-dot{ animation:none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="eyebrow">Two teams · One phone · No mercy</div>
+  <h1 class="brand">Bowled Over</h1>
+  <div class="sub">Cricket names hot-potato charades</div>
+
+  <!-- SETUP -->
+  <section id="screen-setup" class="screen active">
+    <div class="card stack">
+      <div>
+        <label>Team 1 name</label>
+        <input type="text" id="team1name" placeholder="e.g. Yorkers" maxlength="18">
+      </div>
+      <div>
+        <label>Team 2 name</label>
+        <input type="text" id="team2name" placeholder="e.g. Googlies" maxlength="18">
+      </div>
+      <div class="row2">
+        <div>
+          <label>Playing to</label>
+          <input type="number" id="targetScore" value="5" min="1" max="20">
+        </div>
+        <div>
+          <label>Round length</label>
+          <input type="text" id="roundLenDisplay" value="Surprise" disabled style="opacity:.6">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" id="btnStart">Start the match</button>
+      <button class="btn-link link-small" id="btnRules" style="margin-top:2px;">How does this work?</button>
+    </div>
+
+    <div class="card rules" id="rulesCard" style="display:none;">
+      <b>Setup:</b> Sit in a circle, teams interleaved (T1, T2, T1, T2), so partners sit across from each other.
+      <ol>
+        <li>One player holds the phone. They see a cricket player's name and give <b>verbal clues</b> — no saying the name, no gestures needed (charades-style is fine too).</li>
+        <li>Their <b>teammate sitting across</b> guesses.</li>
+        <li>Got it? The phone passes to the player on the <b>other team</b> next in the circle, who becomes the new clue-giver. Back and forth it goes.</li>
+        <li>A hidden timer ticks — faster and faster. Nobody knows when it goes off.</li>
+        <li>When the buzzer hits, whoever is <b>holding the phone</b> loses the round. The other team scores a point.</li>
+        <li>First to the target score wins the match!</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- READY -->
+  <section id="screen-ready" class="screen">
+    <div class="scoreboard">
+      <div class="score-team"><div class="name" id="ready-t1name">Team 1</div><div class="num" id="ready-t1score">0</div></div>
+      <div class="score-vs">VS</div>
+      <div class="score-team"><div class="name" id="ready-t2name">Team 2</div><div class="num" id="ready-t2score">0</div></div>
+    </div>
+
+    <div class="holder-banner">
+      <div class="tag">Phone goes to</div>
+      <div class="team" id="ready-holder">Team 1</div>
+      <div class="hint">Hand the phone to a player on this team. Their partner across the circle will guess. When you're ready, hit start — clues begin immediately.</div>
+    </div>
+
+    <button class="btn btn-primary btn-block" id="btnBeginRound">Start round — reveal name</button>
+  </section>
+
+  <!-- PLAY -->
+  <section id="screen-play" class="screen">
+    <div class="scoreboard">
+      <div class="score-team"><div class="name" id="play-t1name">Team 1</div><div class="num" id="play-t1score">0</div></div>
+      <div class="score-vs">VS</div>
+      <div class="score-team"><div class="name" id="play-t2name">Team 2</div><div class="num" id="play-t2score">0</div></div>
+    </div>
+
+    <div class="play-wrap card" id="playCard" style="flex:1;">
+      <div class="heat-ring" id="heatRing"></div>
+      <span class="holder-pill"><span class="pulse-dot"></span><span id="holderPillText">Team 1 is holding</span></span>
+      <div class="clue-tag">Give clues for</div>
+      <div class="player-name" id="currentName">—</div>
+    </div>
+
+    <div class="stack">
+      <button class="btn btn-primary btn-block" id="btnGotIt">✓ Got it — pass to other team</button>
+      <button class="btn btn-ghost btn-block" id="btnSkip">Skip this name</button>
+    </div>
+  </section>
+
+  <!-- BUZZER -->
+  <section id="screen-buzzer" class="screen">
+    <div class="buzz-flash">
+      <div class="siren">⏰ Time's up!</div>
+      <div class="who">Caught holding the phone: <b id="buzzHolder">Team 1</b></div>
+      <div class="who" style="margin-top:8px;">Point goes to <b id="buzzWinner">Team 2</b></div>
+    </div>
+    <div class="scoreboard">
+      <div class="score-team"><div class="name" id="buzz-t1name">Team 1</div><div class="num" id="buzz-t1score">0</div></div>
+      <div class="score-vs">VS</div>
+      <div class="score-team"><div class="name" id="buzz-t2name">Team 2</div><div class="num" id="buzz-t2score">0</div></div>
+    </div>
+    <button class="btn btn-gold btn-block" id="btnNextRound">Next round</button>
+  </section>
+
+  <!-- WIN -->
+  <section id="screen-win" class="screen">
+    <div class="win-flash">
+      <div class="trophy">🏆</div>
+      <div class="tag" style="font-family:'Share Tech Mono',monospace; letter-spacing:.2em; font-size:12px; color:var(--clay); text-transform:uppercase;">Match winner</div>
+      <div class="team" id="winTeam">Team 1</div>
+    </div>
+    <button class="btn btn-primary btn-block" id="btnNewGame">New match</button>
+  </section>
+
+  <div class="footer-note">🏏 600+ real cricket players loaded · pass it around!</div>
+</div>
+
+<script>
+/* ---------------- Player database (600+ real cricketers, men's & women's) ---------------- */
+const PLAYERS = [
+"Virat Kohli","Sachin Tendulkar","MS Dhoni","Rohit Sharma","Rahul Dravid","Sourav Ganguly","Anil Kumble","Kapil Dev","Sunil Gavaskar","Virender Sehwag","Yuvraj Singh","Harbhajan Singh","Zaheer Khan","Gautam Gambhir","VVS Laxman","Javagal Srinath","Ravichandran Ashwin","Ravindra Jadeja","Jasprit Bumrah","Mohammed Shami","Hardik Pandya","KL Rahul","Shikhar Dhawan","Ajinkya Rahane","Cheteshwar Pujara","Ishant Sharma","Bhuvneshwar Kumar","Suresh Raina","Dinesh Karthik","Wasim Jaffer","Murali Vijay","Ambati Rayudu","Yusuf Pathan","Irfan Pathan","Munaf Patel","RP Singh","Piyush Chawla","Amit Mishra","Kuldeep Yadav","Yuzvendra Chahal","Shreyas Iyer","Rishabh Pant","Prithvi Shaw","Mayank Agarwal","Washington Sundar","Axar Patel","Shardul Thakur","Deepak Chahar","Navdeep Saini","T Natarajan","Suryakumar Yadav","Ishan Kishan","Sanju Samson","Kedar Jadhav","Manish Pandey","Karun Nair","Parthiv Patel","Robin Uthappa","S Sreesanth","Ashish Nehra","Praveen Kumar","Vinay Kumar","Lakshmipathy Balaji","Dhawal Kulkarni","Jaydev Unadkat","Umesh Yadav","Mohit Sharma","Stuart Binny","Mohammad Kaif","Ravi Shastri","Mohinder Amarnath","Bishan Bedi","Erapalli Prasanna","Bhagwath Chandrasekhar","GR Vishwanath","Dilip Vengsarkar","Krishnamachari Srikkanth","Navjot Sidhu","Nayan Mongia","Syed Kirmani","Farokh Engineer","Vinoo Mankad","Vijay Hazare","Lala Amarnath","Polly Umrigar","Chandu Borde",
+"Don Bradman","Ricky Ponting","Steve Waugh","Mark Waugh","Adam Gilchrist","Shane Warne","Glenn McGrath","Brett Lee","Michael Clarke","Matthew Hayden","Justin Langer","Allan Border","Dennis Lillee","Jeff Thomson","Ian Chappell","Greg Chappell","Steve Smith","David Warner","Pat Cummins","Mitchell Starc","Josh Hazlewood","Nathan Lyon","Marnus Labuschagne","Travis Head","Cameron Green","Mitchell Marsh","Glenn Maxwell","Marcus Stoinis","Alex Carey","Josh Inglis","Aaron Finch","George Bailey","Michael Hussey","Simon Katich","Shane Watson","Brad Haddin","Michael Bevan","Damien Martyn","Darren Lehmann","Stuart MacGill","Jason Gillespie","Andy Bichel","Craig McDermott","Merv Hughes","Bruce Reid","Terry Alderman","Kim Hughes","Rod Marsh","Doug Walters","Bill Lawry","Bob Simpson","Neil Harvey","Keith Miller","Ray Lindwall","Richie Benaud","Wally Grout","Alan Davidson","Colin Miller","Michael Kasprowicz","Andrew Symonds","Brad Hogg","Cameron White","Ashton Agar","Sean Abbott","Adam Zampa","Marcus Harris","Usman Khawaja","Peter Handscomb",
+"Kane Williamson","Ross Taylor","Brendon McCullum","Martin Guptill","Trent Boult","Tim Southee","Daniel Vettori","Stephen Fleming","Nathan Astle","Chris Cairns","Richard Hadlee","Martin Crowe","John Wright","Glenn Turner","Mark Greatbatch","Craig McMillan","Scott Styris","Jacob Oram","Kyle Mills","Shane Bond","Neil Wagner","Matt Henry","Lockie Ferguson","Colin de Grandhomme","Jimmy Neesham","Mitchell Santner","Ish Sodhi","Devon Conway","Daryl Mitchell","Tom Latham","Henry Nicholls","Will Young","Rachin Ravindra","Kyle Jamieson","BJ Watling","Luke Ronchi","Grant Elliott","Corey Anderson","James Franklin","Andrew Ellis","Chris Harris","Gavin Larsen","Danny Morrison","Ewen Chatfield",
+"Imran Khan","Javed Miandad","Wasim Akram","Waqar Younis","Inzamam-ul-Haq","Shoaib Akhtar","Younis Khan","Mohammad Yousuf","Saeed Anwar","Salim Malik","Zaheer Abbas","Hanif Mohammad","Majid Khan","Abdul Qadir","Mushtaq Ahmed","Saqlain Mushtaq","Shahid Afridi","Misbah-ul-Haq","Mohammad Amir","Babar Azam","Shaheen Afridi","Mohammad Rizwan","Fakhar Zaman","Imam-ul-Haq","Shadab Khan","Haris Rauf","Naseem Shah","Sarfaraz Ahmed","Asad Shafiq","Azhar Ali","Yasir Shah","Wahab Riaz","Junaid Khan","Umar Gul","Sohail Tanvir","Fawad Alam","Mohammad Hafeez","Shoaib Malik","Ahmed Shehzad","Umar Akmal","Kamran Akmal","Abdul Razzaq","Danish Kaneria","Rana Naveed-ul-Hasan","Iqbal Qasim","Sarfraz Nawaz","Sikander Bakht","Mudassar Nazar","Ramiz Raja","Aamer Sohail","Moin Khan","Rashid Latif","Basit Ali","Ijaz Ahmed",
+"Jacques Kallis","AB de Villiers","Hashim Amla","Graeme Smith","Dale Steyn","Morne Morkel","Vernon Philander","Faf du Plessis","Quinton de Kock","Kagiso Rabada","Lungi Ngidi","Aiden Markram","Rassie van der Dussen","Temba Bavuma","Anrich Nortje","Keshav Maharaj","Tabraiz Shamsi","David Miller","JP Duminy","Herschelle Gibbs","Mark Boucher","Allan Donald","Shaun Pollock","Makhaya Ntini","Jonty Rhodes","Gary Kirsten","Kepler Wessels","Hansie Cronje","Lance Klusener","Daryll Cullinan","Neil McKenzie","Ashwell Prince","Andrew Hall","Nicky Boje","Paul Adams","Jacques Rudolph","Boeta Dippenaar","Colin Ingram","Wayne Parnell","Chris Morris","Marco Jansen","Sisanda Magala","Heinrich Klaasen","Dwaine Pretorius","Andile Phehlukwayo","Reeza Hendricks","Ryan Rickelton","Tristan Stubbs",
+"Brian Lara","Viv Richards","Garfield Sobers","Clive Lloyd","Curtly Ambrose","Courtney Walsh","Malcolm Marshall","Michael Holding","Joel Garner","Andy Roberts","Gordon Greenidge","Desmond Haynes","Chris Gayle","Shivnarine Chanderpaul","Ramnaresh Sarwan","Dwayne Bravo","Kieron Pollard","Sunil Narine","Andre Russell","Jason Holder","Shai Hope","Nicholas Pooran","Shimron Hetmyer","Jason Mohammed","Darren Sammy","Denesh Ramdin","Marlon Samuels","Fidel Edwards","Kemar Roach","Shannon Gabriel","Alzarri Joseph","Jerome Taylor","Ravi Rampaul","Sulieman Benn","Devendra Bishoo","Roston Chase","Kraigg Brathwaite","John Campbell","Evin Lewis","Rovman Powell","Akeal Hosein","Obed McCoy","Jayden Seales","Alick Athanaze",
+"Muttiah Muralitharan","Sanath Jayasuriya","Kumar Sangakkara","Mahela Jayawardene","Aravinda de Silva","Arjuna Ranatunga","Chaminda Vaas","Lasith Malinga","Tillakaratne Dilshan","Angelo Mathews","Dinesh Chandimal","Dimuth Karunaratne","Kusal Perera","Kusal Mendis","Wanindu Hasaranga","Dushmantha Chameera","Maheesh Theekshana","Dhananjaya de Silva","Pathum Nissanka","Charith Asalanka","Rangana Herath","Ajantha Mendis","Nuwan Kulasekara","Suranga Lakmal","Dilhara Fernando","Farveez Maharoof","Thilan Samaraweera","Marvan Atapattu","Russel Arnold","Romesh Kaluwitharana","Hashan Tillakaratne","Roshan Mahanama","Sidath Wettimuny","Duleep Mendis",
+"Shakib Al Hasan","Tamim Iqbal","Mushfiqur Rahim","Mahmudullah","Mustafizur Rahman","Mashrafe Mortaza","Taskin Ahmed","Litton Das","Najmul Hossain Shanto","Soumya Sarkar","Mehidy Hasan Miraz","Taijul Islam","Ebadot Hossain","Shoriful Islam","Nasum Ahmed","Afif Hossain","Yasir Ali","Habibul Bashar","Aminul Islam","Khaled Mahmud","Abdur Razzak",
+"Rashid Khan","Mohammad Nabi","Mujeeb Ur Rahman","Rahmanullah Gurbaz","Hazratullah Zazai","Najibullah Zadran","Gulbadin Naib","Asghar Afghan","Noor Ahmad","Fazalhaq Farooqi","Naveen-ul-Haq","Ibrahim Zadran","Azmatullah Omarzai","Karim Janat","Hashmatullah Shahidi",
+"Andy Flower","Grant Flower","Heath Streak","Tatenda Taibu","Brendan Taylor","Sikandar Raza","Craig Ervine","Sean Williams","Hamilton Masakadza","Sean Ervine","Elton Chigumbura","Ray Price","Blessing Muzarabani","Wellington Masakadza","Alistair Campbell",
+"Ben Stokes","Joe Root","Jos Buttler","Eoin Morgan","Alastair Cook","Kevin Pietersen","Andrew Flintoff","Ian Botham","Graham Gooch","David Gower","Michael Vaughan","Andrew Strauss","James Anderson","Stuart Broad","Graeme Swann","Moeen Ali","Jonny Bairstow","Jason Roy","Jofra Archer","Mark Wood","Chris Woakes","Sam Curran","Liam Livingstone","Harry Brook","Zak Crawley","Ollie Pope","Ben Foakes","Adil Rashid","Reece Topley","Mark Ramprakash","Nasser Hussain","Marcus Trescothick","Steve Harmison","Ashley Giles","Paul Collingwood","Matt Prior","Geoffrey Boycott","John Snow","Bob Willis","Derek Underwood","Alec Stewart","Robin Smith","Allan Lamb","Mike Gatting","Phil Tufnell","Angus Fraser","Darren Gough","Alec Bedser","Fred Trueman","Ted Dexter","Colin Cowdrey","Ken Barrington","Len Hutton","Denis Compton","Jack Hobbs","WG Grace","Wilfred Rhodes","Sydney Barnes","Harold Larwood","Chris Jordan","Tom Curran","Liam Plunkett","David Willey","Dawid Malan",
+"Kevin O'Brien","Paul Stirling","Andrew Balbirnie","William Porterfield","Tim Murtagh","Boyd Rankin","George Dockrell","Josh Little","Curtis Campher","Ryan ten Doeschate","Roelof van der Merwe","Scott Edwards","Bas de Leede","Max O'Dowd",
+"Meg Lanning","Ellyse Perry","Alyssa Healy","Beth Mooney","Tahlia McGrath","Ashleigh Gardner","Megan Schutt","Jess Jonassen","Sophie Devine","Suzie Bates","Amelia Kerr","Amy Satterthwaite","Katey Martin","Lea Tahuhu","Smriti Mandhana","Harmanpreet Kaur","Mithali Raj","Jhulan Goswami","Shafali Verma","Deepti Sharma","Renuka Singh","Richa Ghosh","Harleen Deol","Yastika Bhatia","Heather Knight","Nat Sciver-Brunt","Tammy Beaumont","Sophia Dunkley","Sophie Ecclestone","Katherine Sciver-Brunt","Danni Wyatt","Amy Jones","Charlotte Edwards","Claire Taylor","Isa Guha","Katherine Brunt","Anya Shrubsole","Charlie Dean","Alice Capsey","Dane van Niekerk","Marizanne Kapp","Laura Wolvaardt","Lizelle Lee","Chloe Tryon","Shabnim Ismail","Trisha Chetty","Mignon du Preez","Stafanie Taylor","Deandra Dottin","Hayley Matthews","Shemaine Campbelle","Chamari Athapaththu","Nida Dar","Bismah Maroof","Javeria Khan","Sana Mir","Rumana Ahmed","Salma Khatun","Jahanara Alam","Rachael Haynes","Rachel Priest","Katie Perkins","Sara McGlashan","Belinda Clark","Karen Rolton","Cathryn Fitzpatrick","Lisa Sthalekar","Alex Blackwell","Jodie Fields","Rachael Heyhoe Flint","Enid Bakewell","Jan Brittin","Clare Connor","Arran Brindle","Lydia Greenway","Sarah Taylor","Jenny Gunn","Georgia Elwiss","Kate Cross","Freya Davies","Issy Wong","Lauren Bell","Bryony Smith","Maia Bouchier","Grace Scrivens","Hollie Armitage"
+];
+
+/* ---------------- State ---------------- */
+let state = {
+  t1: "Team 1", t2: "Team 2",
+  score1: 0, score2: 0,
+  target: 5,
+  holder: 1,        // which team currently has the phone
+  deck: [],
+  deckIdx: 0,
+  currentName: "",
+  timerActive: false,
+  audioCtx: null,
+  tickTimeout: null,
+  roundStartTime: 0,
+  roundTotal: 0,
+};
+
+function shuffledDeck(){
+  const arr = PLAYERS.slice();
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+
+function nextPlayerName(){
+  if(state.deckIdx >= state.deck.length){
+    state.deck = shuffledDeck();
+    state.deckIdx = 0;
+  }
+  const name = state.deck[state.deckIdx];
+  state.deckIdx++;
+  return name;
+}
+
+/* ---------------- Screen management ---------------- */
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function teamName(n){ return n===1 ? state.t1 : state.t2; }
+function otherTeam(n){ return n===1 ? 2 : 1; }
+
+function refreshScoreboards(){
+  const pairs = [
+    ['ready-t1name','ready-t1score','ready-t2name','ready-t2score'],
+    ['play-t1name','play-t1score','play-t2name','play-t2score'],
+    ['buzz-t1name','buzz-t1score','buzz-t2name','buzz-t2score'],
+  ];
+  pairs.forEach(([n1,s1,n2,s2])=>{
+    document.getElementById(n1).textContent = state.t1;
+    document.getElementById(s1).textContent = state.score1;
+    document.getElementById(n2).textContent = state.t2;
+    document.getElementById(s2).textContent = state.score2;
+  });
+}
+
+/* ---------------- Audio (tick + buzzer via WebAudio, no files needed) ---------------- */
+function ensureAudio(){
+  if(!state.audioCtx){
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(state.audioCtx.state === 'suspended') state.audioCtx.resume();
+}
+function playTick(freq){
+  try{
+    const ctx = state.audioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.14, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.09);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+  }catch(e){}
+  if(navigator.vibrate) navigator.vibrate(30);
+}
+function playBuzzer(){
+  try{
+    const ctx = state.audioCtx;
+    for(let i=0;i<3;i++){
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type='sawtooth';
+      osc.frequency.value = 140;
+      gain.gain.setValueAtTime(0.001, ctx.currentTime + i*0.28);
+      gain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + i*0.28 + 0.03);
+      gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + i*0.28 + 0.25);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + i*0.28);
+      osc.stop(ctx.currentTime + i*0.28 + 0.26);
+    }
+  }catch(e){}
+  if(navigator.vibrate) navigator.vibrate([120,60,120,60,220]);
+}
+
+/* ---------------- Round / timer logic ---------------- */
+function startRound(){
+  ensureAudio();
+  state.roundTotal = 40000 + Math.random()*40000; // 40-80s, hidden from players
+  state.roundStartTime = performance.now();
+  state.timerActive = true;
+  drawNewName();
+  updateHolderUI();
+  show('screen-play');
+  scheduleTick();
+}
+
+function drawNewName(){
+  state.currentName = nextPlayerName();
+  document.getElementById('currentName').textContent = state.currentName;
+}
+
+function updateHolderUI(){
+  document.getElementById('holderPillText').textContent = teamName(state.holder) + " is holding";
+  refreshScoreboards();
+}
+
+function scheduleTick(){
+  if(!state.timerActive) return;
+  const elapsed = performance.now() - state.roundStartTime;
+  const progress = Math.min(elapsed / state.roundTotal, 1);
+
+  if(progress >= 1){
+    triggerBuzzer();
+    return;
+  }
+
+  // accelerating tick interval: starts slow (~850ms), ends fast (~110ms)
+  const eased = Math.pow(progress, 1.8);
+  const interval = 850 - (850-110)*eased;
+  const freq = 520 + eased*500;
+
+  playTick(freq);
+
+  // visual heat glow intensifies
+  const ring = document.getElementById('heatRing');
+  if(ring){
+    const glow = 10 + eased*55;
+    const alpha = 0.15 + eased*0.55;
+    ring.style.boxShadow = `inset 0 0 ${glow}px 0 rgba(255,59,48,${alpha})`;
+  }
+
+  state.tickTimeout = setTimeout(scheduleTick, interval);
+}
+
+function stopTimer(){
+  state.timerActive = false;
+  if(state.tickTimeout) clearTimeout(state.tickTimeout);
+  const ring = document.getElementById('heatRing');
+  if(ring) ring.style.boxShadow = 'inset 0 0 0px 0 rgba(255,59,48,0)';
+}
+
+function triggerBuzzer(){
+  stopTimer();
+  playBuzzer();
+  const loser = state.holder;
+  const winner = otherTeam(loser);
+  if(winner===1) state.score1++; else state.score2++;
+
+  document.getElementById('buzzHolder').textContent = teamName(loser);
+  document.getElementById('buzzWinner').textContent = teamName(winner);
+  refreshScoreboards();
+  show('screen-buzzer');
+
+  // next round: the team that just lost starts holding again (fresh clue-giver)
+  state.holder = loser;
+
+  if(Math.max(state.score1,state.score2) >= state.target){
+    setTimeout(()=>{ showWin(); }, 250);
+  }
+}
+
+function showWin(){
+  const winner = state.score1 > state.score2 ? state.t1 : state.t2;
+  document.getElementById('winTeam').textContent = winner;
+  show('screen-win');
+}
+
+/* ---------------- Button wiring ---------------- */
+document.getElementById('btnRules').addEventListener('click', ()=>{
+  const rc = document.getElementById('rulesCard');
+  rc.style.display = rc.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('btnStart').addEventListener('click', ()=>{
+  const t1 = document.getElementById('team1name').value.trim();
+  const t2 = document.getElementById('team2name').value.trim();
+  const target = parseInt(document.getElementById('targetScore').value,10);
+
+  state.t1 = t1 || "Team 1";
+  state.t2 = t2 || "Team 2";
+  state.target = (target && target>0) ? target : 5;
+  state.score1 = 0; state.score2 = 0;
+  state.holder = 1;
+  state.deck = shuffledDeck();
+  state.deckIdx = 0;
+
+  document.getElementById('ready-holder').textContent = teamName(state.holder);
+  refreshScoreboards();
+  show('screen-ready');
+});
+
+document.getElementById('btnBeginRound').addEventListener('click', ()=>{
+  startRound();
+});
+
+document.getElementById('btnGotIt').addEventListener('click', ()=>{
+  // correct guess: pass phone to other team, draw new name, keep timer running
+  state.holder = otherTeam(state.holder);
+  updateHolderUI();
+  drawNewName();
+});
+
+document.getElementById('btnSkip').addEventListener('click', ()=>{
+  // skip: same holder keeps the phone, just get a new name
+  drawNewName();
+});
+
+document.getElementById('btnNextRound').addEventListener('click', ()=>{
+  document.getElementById('ready-holder').textContent = teamName(state.holder);
+  refreshScoreboards();
+  show('screen-ready');
+});
+
+document.getElementById('btnNewGame').addEventListener('click', ()=>{
+  show('screen-setup');
+});
+</script>
+</body>
+</html>
