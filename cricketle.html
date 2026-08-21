@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Cricketle — Guess the Cricketer</title>
+<meta name="description" content="Wordle, but for cricket. Guess the player from country, role, batting hand, bowling style, birth year and status.">
+
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0d3d1f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cricketle">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="icon" href="/icons/icon-192.png" type="image/png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pitch-dark:#06210f;
+    --pitch:#0d3d1f;
+    --floodlight:#fff6da;
+    --leather:#a8321f;
+    --leather-light:#d6462d;
+    --clay:#c98a3a;
+    --cream:#f3ecd8;
+    --green:#3ea55a;
+    --green-glow: rgba(62,165,90,0.5);
+    --yellow:#c9973a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; min-height:100vh; font-family:'Oswald',sans-serif; color:var(--cream);
+    background:
+      radial-gradient(ellipse 120% 60% at 50% -10%, rgba(255,246,218,0.10), transparent 55%),
+      radial-gradient(ellipse 90% 50% at 50% 110%, rgba(0,0,0,0.55), transparent 60%),
+      linear-gradient(180deg, var(--pitch-dark) 0%, var(--pitch) 55%, var(--pitch-dark) 100%);
+    display:flex; justify-content:center;
+  }
+  body::before{
+    content:""; position:fixed; inset:0;
+    background: repeating-linear-gradient(100deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 40px, transparent 40px, transparent 80px);
+    pointer-events:none; z-index:0;
+  }
+  #app{ position:relative; z-index:1; width:100%; max-width:520px; min-height:100vh; display:flex; flex-direction:column; padding:18px 14px 30px; }
+
+  .eyebrow{ font-family:'Share Tech Mono',monospace; letter-spacing:.24em; font-size:10.5px; color:var(--clay); text-transform:uppercase; text-align:center; }
+  h1.brand{ font-family:'Anton',sans-serif; font-size:clamp(30px,9vw,42px); text-align:center; margin:2px 0 2px; text-transform:uppercase; color:var(--floodlight); text-shadow:0 0 22px rgba(255,246,218,0.32), 0 3px 0 rgba(0,0,0,0.4); }
+  .sub{ text-align:center; color:rgba(243,236,216,0.6); font-size:13.5px; margin-bottom:12px; }
+
+  .modebar{ display:flex; gap:8px; justify-content:center; margin-bottom:12px; flex-wrap:wrap; }
+  .pill-btn{
+    font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:.04em; text-transform:uppercase;
+    padding:8px 13px; border-radius:999px; border:1px solid rgba(243,236,216,0.22);
+    background:rgba(255,255,255,0.04); color:var(--cream); cursor:pointer;
+  }
+  .pill-btn.active{ background:linear-gradient(180deg,var(--leather-light),var(--leather)); border-color:transparent; color:#fff2ea; }
+
+  .status-line{ text-align:center; font-size:13px; color:rgba(243,236,216,0.7); margin-bottom:10px; }
+  .status-line b{ color:var(--floodlight); }
+
+  /* search */
+  .search-wrap{ position:relative; margin-bottom:10px; }
+  input#guessInput{
+    width:100%; background:rgba(6,20,10,0.6); border:1px solid rgba(243,236,216,0.18); border-radius:12px;
+    padding:13px 14px; color:var(--cream); font-family:'Oswald',sans-serif; font-size:16px; outline:none;
+  }
+  input#guessInput:focus{ border-color:var(--clay); }
+  .dropdown{
+    position:absolute; top:calc(100% + 6px); left:0; right:0; background:#0a2413; border:1px solid rgba(243,236,216,0.18);
+    border-radius:12px; max-height:240px; overflow-y:auto; z-index:20; box-shadow:0 12px 30px rgba(0,0,0,0.5); display:none;
+  }
+  .dropdown.show{ display:block; }
+  .dd-item{ padding:11px 14px; font-size:14.5px; cursor:pointer; border-bottom:1px solid rgba(243,236,216,0.06); display:flex; justify-content:space-between; gap:8px; }
+  .dd-item:last-child{ border-bottom:none; }
+  .dd-item:hover, .dd-item.hi{ background:rgba(201,138,58,0.18); }
+  .dd-item .cc{ font-family:'Share Tech Mono',monospace; font-size:11px; color:rgba(243,236,216,0.45); }
+  .dd-empty{ padding:12px 14px; font-size:13px; color:rgba(243,236,216,0.5); }
+
+  #rows{ display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
+  .guess-card{
+    background:rgba(255,255,255,0.03); border:1px solid rgba(243,236,216,0.08); border-radius:14px;
+    padding:8px; animation: pop .28s ease;
+  }
+  @keyframes pop{ from{ transform:scale(0.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  .guess-name{
+    text-align:center; font-size:14px; font-weight:600; color:var(--floodlight); padding:5px 6px 8px;
+  }
+  .guess-name.hit{ color:#8fffb0; }
+  .stat-grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; }
+  .cell{
+    border-radius:9px; padding:6px 3px 6px; text-align:center; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; min-height:46px; border:1px solid rgba(255,255,255,0.06);
+  }
+  .cell .lbl{ font-size:8px; letter-spacing:.04em; text-transform:uppercase; opacity:.65; margin-bottom:2px; font-family:'Share Tech Mono',monospace; }
+  .cell .val{ font-size:11.5px; font-weight:600; line-height:1.1; }
+  .cell .arrow{ font-size:10px; margin-top:1px; }
+
+  .cell.green{ background:linear-gradient(180deg,#4bbf6c,#2f8f4c); color:#08240f; box-shadow:0 0 14px rgba(62,165,90,0.35); }
+  .cell.yellow{ background:linear-gradient(180deg,#e8c164,#c9973a); color:#2a1a05; box-shadow:0 0 14px rgba(201,151,58,0.3); }
+  .cell.red{ background:linear-gradient(180deg,#3a1c17,#241009); color:rgba(243,236,216,0.75); border-color:rgba(255,255,255,0.05); }
+
+  .legend{ font-size:11px; color:rgba(243,236,216,0.45); text-align:center; margin:8px 0 14px; line-height:1.6; }
+  .legend b{ color:rgba(243,236,216,0.7); }
+
+  .toggle-rules{ text-align:center; font-size:12.5px; color:rgba(243,236,216,0.55); text-decoration:underline; background:none; border:none; cursor:pointer; margin-bottom:10px; }
+  .rules-card{ display:none; background:rgba(255,255,255,0.04); border:1px solid rgba(243,236,216,0.12); border-radius:14px; padding:14px 16px; font-size:13px; line-height:1.6; color:rgba(243,236,216,0.8); margin-bottom:12px; }
+  .rules-card b{ color:var(--floodlight); }
+  .rules-card ul{ padding-left:18px; margin:6px 0 0; }
+  .rules-card li{ margin-bottom:4px; }
+
+  .action-row{ display:flex; gap:8px; margin-bottom:12px; }
+  .action-row .btn{ flex:1; padding:11px 10px; font-size:12.5px; }
+  .btn-hint{ background:rgba(201,138,58,0.14); border:1px solid rgba(201,138,58,0.45); color:var(--clay); }
+  .btn-hint:disabled{ opacity:0.4; cursor:not-allowed; }
+  .btn-giveup{ background:rgba(255,59,48,0.1); border:1px solid rgba(255,59,48,0.4); color:#ff8880; }
+  .hint-box{ display:none; background:rgba(201,138,58,0.1); border:1px solid rgba(201,138,58,0.35); border-radius:12px; padding:10px 14px; font-size:13px; color:var(--cream); margin-bottom:10px; }
+  .hint-box b{ color:var(--clay); }
+
+  .result-card{
+    display:none; text-align:center; padding:22px 16px; border-radius:16px; margin-top:6px;
+    background:linear-gradient(180deg, rgba(143,255,176,0.14), rgba(143,255,176,0.02)); border:1px solid rgba(143,255,176,0.35);
+  }
+  .result-card.lose{ background:linear-gradient(180deg, rgba(255,59,48,0.16), rgba(255,59,48,0.02)); border-color:rgba(255,59,48,0.4); }
+  .result-card .title{ font-family:'Anton',sans-serif; font-size:26px; text-transform:uppercase; color:var(--floodlight); margin-bottom:6px; }
+  .result-card .ans{ font-size:15px; color:rgba(243,236,216,0.85); margin-bottom:12px; }
+  .result-card .ans b{ color:#8fffb0; }
+  .btnrow{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  .btn{ appearance:none; border:none; border-radius:12px; padding:12px 16px; font-family:'Oswald',sans-serif; font-weight:600; font-size:14px; letter-spacing:.03em; text-transform:uppercase; cursor:pointer; }
+  .btn-primary{ background:linear-gradient(180deg, var(--leather-light), var(--leather)); color:#fff2ea; box-shadow:0 5px 0 #7a2114; }
+  .btn-primary:active{ box-shadow:0 2px 0 #7a2114; transform:translateY(2px); }
+  .btn-gold{ background:linear-gradient(180deg,#e8b25a,var(--clay)); color:#2a1a05; box-shadow:0 5px 0 #8a5a1f; }
+  .btn-gold:active{ box-shadow:0 2px 0 #8a5a1f; transform:translateY(2px); }
+
+  .toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:#0a2413; border:1px solid rgba(243,236,216,0.2); padding:10px 18px; border-radius:999px; font-size:13px; opacity:0; transition:all .25s ease; z-index:50; }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  .footer-note{ text-align:center; font-size:11.5px; color:rgba(243,236,216,0.35); margin-top:auto; padding-top:16px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="eyebrow">200 players · one wicket to guess</div>
+  <h1 class="brand">Cricketle</h1>
+  <div class="sub">Guess the cricketer in 8 tries</div>
+
+  <div class="modebar">
+    <button class="pill-btn active" id="btnDaily">Daily Puzzle</button>
+    <button class="pill-btn" id="btnPractice">New Random (Practice)</button>
+  </div>
+
+  <div class="status-line" id="statusLine">Guess <b id="guessCount">0</b>/8 — <span id="modeLabel">Today's player</span></div>
+
+  <button class="toggle-rules" id="btnRules">How does this work?</button>
+  <div class="rules-card" id="rulesCard">
+    <b>How to play:</b> Type a cricketer's name and pick from the list. Each guess reveals how close you are on seven attributes:
+    <ul>
+      <li><b>Country</b> and <b>Status</b> (Active/Retired): green = exact match, red = no match.</li>
+      <li><b>IPL Team</b>: green = same team, yellow = played IPL but for a different team, red = one (or both) never played IPL.</li>
+      <li><b>Role</b> and <b>Bowling style</b>: green = exact, yellow = shares a skill (e.g. both bowl pace, or one is an all-rounder who also bats), red = unrelated.</li>
+      <li><b>Bats</b>: green = same hand, red = different.</li>
+      <li><b>Born</b> and <b>Matches</b>: green = exact, yellow = close, red = far off. Arrow shows whether the answer is higher (↑) or lower (↓) than your guess.</li>
+    </ul>
+    Daily Puzzle is the same for everyone today. Practice mode gives you a random player any time. Stuck? Use a hint — it costs one guess. Can't get it? Give up to reveal the answer.
+  </div>
+
+  <div class="search-wrap">
+    <input type="text" id="guessInput" placeholder="Type a cricketer's name…" autocomplete="off">
+    <div class="dropdown" id="dropdown"></div>
+  </div>
+
+  <div class="action-row">
+    <button class="btn btn-hint" id="btnHint">💡 Hint (–1 guess)</button>
+    <button class="btn btn-giveup" id="btnGiveUp">🏳️ Give up</button>
+  </div>
+  <div class="hint-box" id="hintBox"></div>
+
+  <div id="rows"></div>
+
+  <div class="legend"><b>Bowling key:</b> RFM = right-arm pace · LF = left-arm pace · OB = off break · LB = leg break · SLA = left-arm orthodox · LWS = left-arm wrist spin · — = doesn't bowl<br><b>Matches</b> = approximate career international appearances (Tests+ODIs+T20Is), for game purposes.</div>
+
+  <div class="result-card" id="resultCard">
+    <div class="title" id="resultTitle">Howzat!</div>
+    <div class="ans" id="resultAns"></div>
+    <div class="btnrow">
+      <button class="btn btn-gold" id="btnShare">Copy result 📋</button>
+      <button class="btn btn-primary" id="btnPlayAgain">New random player</button>
+    </div>
+  </div>
+
+  <div class="footer-note">🏏 A new Daily Puzzle unlocks every day at midnight UTC</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------------- Player database (200 well-known cricketers) ---------------- */
+// c=country code, r=role(BAT/BWL/ALL/WK), b=batting hand(R/L), w=bowling code, y=born year, s=status(ACT/RET)
+const PLAYERS = [
+{n:"Virat Kohli",c:"IND",r:"BAT",b:"R",w:"-",y:1988,s:"ACT",ip:"RCB",m:550},
+{n:"Sachin Tendulkar",c:"IND",r:"BAT",b:"R",w:"-",y:1973,s:"RET",ip:"MI",m:664},
+{n:"MS Dhoni",c:"IND",r:"WK",b:"R",w:"-",y:1981,s:"RET",ip:"CSK",m:538},
+{n:"Rohit Sharma",c:"IND",r:"BAT",b:"R",w:"-",y:1987,s:"ACT",ip:"MI",m:480},
+{n:"Rahul Dravid",c:"IND",r:"BAT",b:"R",w:"-",y:1973,s:"RET",ip:"RCB",m:509},
+{n:"Sourav Ganguly",c:"IND",r:"BAT",b:"L",w:"-",y:1972,s:"RET",ip:"KKR",m:424},
+{n:"Anil Kumble",c:"IND",r:"BWL",b:"R",w:"LB",y:1970,s:"RET",ip:"RCB",m:404},
+{n:"Kapil Dev",c:"IND",r:"ALL",b:"R",w:"RFM",y:1959,s:"RET",ip:"-",m:356},
+{n:"Sunil Gavaskar",c:"IND",r:"BAT",b:"R",w:"-",y:1949,s:"RET",ip:"-",m:216},
+{n:"Virender Sehwag",c:"IND",r:"BAT",b:"R",w:"OB",y:1978,s:"RET",ip:"DC",m:331},
+{n:"Yuvraj Singh",c:"IND",r:"ALL",b:"L",w:"SLA",y:1981,s:"RET",ip:"PBKS",m:402},
+{n:"Harbhajan Singh",c:"IND",r:"BWL",b:"R",w:"OB",y:1980,s:"RET",ip:"MI",m:417},
+{n:"Zaheer Khan",c:"IND",r:"BWL",b:"L",w:"LF",y:1978,s:"RET",ip:"MI",m:272},
+{n:"Ravichandran Ashwin",c:"IND",r:"ALL",b:"R",w:"OB",y:1986,s:"ACT",ip:"CSK",m:300},
+{n:"Ravindra Jadeja",c:"IND",r:"ALL",b:"L",w:"SLA",y:1988,s:"ACT",ip:"CSK",m:320},
+{n:"Jasprit Bumrah",c:"IND",r:"BWL",b:"R",w:"RFM",y:1993,s:"ACT",ip:"MI",m:220},
+{n:"Mohammed Shami",c:"IND",r:"BWL",b:"R",w:"RFM",y:1990,s:"ACT",ip:"GT",m:384},
+{n:"Hardik Pandya",c:"IND",r:"ALL",b:"R",w:"RFM",y:1993,s:"ACT",ip:"MI",m:273},
+{n:"KL Rahul",c:"IND",r:"WK",b:"R",w:"-",y:1992,s:"ACT",ip:"LSG",m:168},
+{n:"Shikhar Dhawan",c:"IND",r:"BAT",b:"L",w:"-",y:1985,s:"RET",ip:"PBKS",m:192},
+{n:"Rishabh Pant",c:"IND",r:"WK",b:"L",w:"-",y:1997,s:"ACT",ip:"LSG",m:108},
+{n:"Suryakumar Yadav",c:"IND",r:"BAT",b:"R",w:"-",y:1990,s:"ACT",ip:"MI",m:208},
+{n:"Shubman Gill",c:"IND",r:"BAT",b:"R",w:"-",y:1999,s:"ACT",ip:"GT",m:105},
+{n:"Yuzvendra Chahal",c:"IND",r:"BWL",b:"R",w:"LB",y:1990,s:"ACT",ip:"RCB",m:384},
+{n:"Kuldeep Yadav",c:"IND",r:"BWL",b:"L",w:"LWS",y:1994,s:"ACT",ip:"DC",m:204},
+{n:"Suresh Raina",c:"IND",r:"ALL",b:"L",w:"OB",y:1986,s:"RET",ip:"CSK",m:352},
+{n:"Gautam Gambhir",c:"IND",r:"BAT",b:"L",w:"-",y:1981,s:"RET",ip:"KKR",m:224},
+{n:"VVS Laxman",c:"IND",r:"BAT",b:"R",w:"-",y:1974,s:"RET",ip:"-",m:208},
+{n:"Ishant Sharma",c:"IND",r:"BWL",b:"R",w:"RFM",y:1988,s:"RET",ip:"DC",m:256},
+{n:"Bhuvneshwar Kumar",c:"IND",r:"BWL",b:"R",w:"RFM",y:1990,s:"ACT",ip:"SRH",m:256},
+{n:"Mohammad Azharuddin",c:"IND",r:"BAT",b:"R",w:"-",y:1963,s:"RET",ip:"-",m:320},
+{n:"Navjot Sidhu",c:"IND",r:"BAT",b:"R",w:"-",y:1963,s:"RET",ip:"-",m:384},
+{n:"Dinesh Karthik",c:"IND",r:"WK",b:"R",w:"-",y:1985,s:"RET",ip:"RCB",m:208},
+{n:"Ajinkya Rahane",c:"IND",r:"BAT",b:"R",w:"-",y:1988,s:"ACT",ip:"RR",m:432},
+{n:"Cheteshwar Pujara",c:"IND",r:"BAT",b:"R",w:"-",y:1988,s:"ACT",ip:"-",m:288},
+{n:"Don Bradman",c:"AUS",r:"BAT",b:"R",w:"-",y:1908,s:"RET",ip:"-",m:52},
+{n:"Ricky Ponting",c:"AUS",r:"BAT",b:"R",w:"-",y:1974,s:"RET",ip:"MI",m:560},
+{n:"Steve Waugh",c:"AUS",r:"BAT",b:"R",w:"RFM",y:1965,s:"RET",ip:"-",m:325},
+{n:"Shane Warne",c:"AUS",r:"BWL",b:"R",w:"LB",y:1969,s:"RET",ip:"RR",m:339},
+{n:"Glenn McGrath",c:"AUS",r:"BWL",b:"R",w:"RFM",y:1970,s:"RET",ip:"DC",m:381},
+{n:"Adam Gilchrist",c:"AUS",r:"WK",b:"L",w:"-",y:1971,s:"RET",ip:"DEC",m:436},
+{n:"Brett Lee",c:"AUS",r:"BWL",b:"R",w:"RFM",y:1976,s:"RET",ip:"KKR",m:224},
+{n:"Michael Clarke",c:"AUS",r:"BAT",b:"R",w:"LB",y:1981,s:"RET",ip:"-",m:328},
+{n:"Matthew Hayden",c:"AUS",r:"BAT",b:"L",w:"-",y:1971,s:"RET",ip:"CSK",m:240},
+{n:"Steve Smith",c:"AUS",r:"BAT",b:"R",w:"LB",y:1989,s:"ACT",ip:"RR",m:300},
+{n:"David Warner",c:"AUS",r:"BAT",b:"L",w:"-",y:1986,s:"ACT",ip:"SRH",m:320},
+{n:"Pat Cummins",c:"AUS",r:"BWL",b:"R",w:"RFM",y:1993,s:"ACT",ip:"SRH",m:299},
+{n:"Mitchell Starc",c:"AUS",r:"BWL",b:"L",w:"LF",y:1990,s:"ACT",ip:"KKR",m:384},
+{n:"Josh Hazlewood",c:"AUS",r:"BWL",b:"R",w:"RFM",y:1991,s:"ACT",ip:"RCB",m:195},
+{n:"Nathan Lyon",c:"AUS",r:"BWL",b:"R",w:"OB",y:1987,s:"ACT",ip:"-",m:285},
+{n:"Glenn Maxwell",c:"AUS",r:"ALL",b:"R",w:"OB",y:1988,s:"ACT",ip:"RCB",m:378},
+{n:"Marnus Labuschagne",c:"AUS",r:"BAT",b:"R",w:"LB",y:1994,s:"ACT",ip:"-",m:276},
+{n:"Travis Head",c:"AUS",r:"BAT",b:"L",w:"OB",y:1993,s:"ACT",ip:"SRH",m:195},
+{n:"Allan Border",c:"AUS",r:"BAT",b:"L",w:"SLA",y:1955,s:"RET",ip:"-",m:417},
+{n:"Dennis Lillee",c:"AUS",r:"BWL",b:"R",w:"RFM",y:1949,s:"RET",ip:"-",m:384},
+{n:"Ian Chappell",c:"AUS",r:"BAT",b:"R",w:"-",y:1943,s:"RET",ip:"-",m:224},
+{n:"Greg Chappell",c:"AUS",r:"BAT",b:"R",w:"RFM",y:1948,s:"RET",ip:"-",m:208},
+{n:"Michael Hussey",c:"AUS",r:"BAT",b:"L",w:"-",y:1975,s:"RET",ip:"CSK",m:224},
+{n:"Shane Watson",c:"AUS",r:"ALL",b:"R",w:"RFM",y:1981,s:"RET",ip:"CSK",m:240},
+{n:"Aaron Finch",c:"AUS",r:"BAT",b:"R",w:"-",y:1986,s:"RET",ip:"RCB",m:384},
+{n:"Mitchell Marsh",c:"AUS",r:"ALL",b:"R",w:"RFM",y:1991,s:"ACT",ip:"-",m:180},
+{n:"Cameron Green",c:"AUS",r:"ALL",b:"R",w:"RFM",y:2000,s:"ACT",ip:"RCB",m:132},
+{n:"Alex Carey",c:"AUS",r:"WK",b:"L",w:"-",y:1991,s:"ACT",ip:"DC",m:300},
+{n:"Adam Zampa",c:"AUS",r:"BWL",b:"R",w:"LB",y:1992,s:"ACT",ip:"RR",m:168},
+{n:"Usman Khawaja",c:"AUS",r:"BAT",b:"L",w:"-",y:1986,s:"ACT",ip:"-",m:240},
+{n:"Ben Stokes",c:"ENG",r:"ALL",b:"L",w:"RFM",y:1991,s:"ACT",ip:"CSK",m:250},
+{n:"Joe Root",c:"ENG",r:"BAT",b:"R",w:"OB",y:1990,s:"ACT",ip:"-",m:420},
+{n:"Jos Buttler",c:"ENG",r:"WK",b:"R",w:"-",y:1990,s:"ACT",ip:"RR",m:330},
+{n:"Eoin Morgan",c:"ENG",r:"BAT",b:"L",w:"-",y:1986,s:"RET",ip:"KKR",m:240},
+{n:"Alastair Cook",c:"ENG",r:"BAT",b:"L",w:"-",y:1984,s:"RET",ip:"-",m:329},
+{n:"Kevin Pietersen",c:"ENG",r:"BAT",b:"R",w:"OB",y:1980,s:"RET",ip:"DC",m:263},
+{n:"Andrew Flintoff",c:"ENG",r:"ALL",b:"L",w:"RFM",y:1977,s:"RET",ip:"CSK",m:216},
+{n:"Ian Botham",c:"ENG",r:"ALL",b:"R",w:"RFM",y:1955,s:"RET",ip:"-",m:261},
+{n:"James Anderson",c:"ENG",r:"BWL",b:"R",w:"RFM",y:1982,s:"RET",ip:"-",m:403},
+{n:"Stuart Broad",c:"ENG",r:"BWL",b:"L",w:"RFM",y:1986,s:"RET",ip:"-",m:382},
+{n:"Moeen Ali",c:"ENG",r:"ALL",b:"L",w:"OB",y:1987,s:"RET",ip:"CSK",m:224},
+{n:"Jonny Bairstow",c:"ENG",r:"WK",b:"R",w:"-",y:1989,s:"ACT",ip:"PBKS",m:357},
+{n:"Jofra Archer",c:"ENG",r:"BWL",b:"R",w:"RFM",y:1995,s:"ACT",ip:"RR",m:132},
+{n:"Harry Brook",c:"ENG",r:"BAT",b:"R",w:"-",y:2000,s:"ACT",ip:"DC",m:96},
+{n:"Jason Roy",c:"ENG",r:"BAT",b:"R",w:"-",y:1990,s:"RET",ip:"-",m:336},
+{n:"Mark Wood",c:"ENG",r:"BWL",b:"R",w:"RFM",y:1990,s:"ACT",ip:"-",m:192},
+{n:"Chris Woakes",c:"ENG",r:"ALL",b:"R",w:"RFM",y:1989,s:"ACT",ip:"-",m:272},
+{n:"Sam Curran",c:"ENG",r:"ALL",b:"L",w:"LF",y:1998,s:"ACT",ip:"PBKS",m:104},
+{n:"Michael Vaughan",c:"ENG",r:"BAT",b:"R",w:"OB",y:1974,s:"RET",ip:"-",m:192},
+{n:"Andrew Strauss",c:"ENG",r:"BAT",b:"L",w:"-",y:1977,s:"RET",ip:"-",m:320},
+{n:"Graham Gooch",c:"ENG",r:"BAT",b:"R",w:"-",y:1953,s:"RET",ip:"-",m:368},
+{n:"David Gower",c:"ENG",r:"BAT",b:"L",w:"-",y:1957,s:"RET",ip:"-",m:288},
+{n:"Geoffrey Boycott",c:"ENG",r:"BAT",b:"R",w:"-",y:1940,s:"RET",ip:"-",m:224},
+{n:"Nasser Hussain",c:"ENG",r:"BAT",b:"R",w:"-",y:1968,s:"RET",ip:"-",m:320},
+{n:"Liam Livingstone",c:"ENG",r:"ALL",b:"R",w:"LB",y:1993,s:"ACT",ip:"RCB",m:208},
+{n:"Imran Khan",c:"PAK",r:"ALL",b:"R",w:"RFM",y:1952,s:"RET",ip:"-",m:213},
+{n:"Javed Miandad",c:"PAK",r:"BAT",b:"R",w:"-",y:1957,s:"RET",ip:"-",m:356},
+{n:"Wasim Akram",c:"PAK",r:"ALL",b:"L",w:"LF",y:1966,s:"RET",ip:"-",m:460},
+{n:"Waqar Younis",c:"PAK",r:"BWL",b:"R",w:"RFM",y:1971,s:"RET",ip:"-",m:333},
+{n:"Inzamam-ul-Haq",c:"PAK",r:"BAT",b:"R",w:"-",y:1970,s:"RET",ip:"-",m:501},
+{n:"Shoaib Akhtar",c:"PAK",r:"BWL",b:"R",w:"RFM",y:1975,s:"RET",ip:"-",m:163},
+{n:"Younis Khan",c:"PAK",r:"BAT",b:"R",w:"-",y:1977,s:"RET",ip:"-",m:256},
+{n:"Shahid Afridi",c:"PAK",r:"ALL",b:"R",w:"LB",y:1980,s:"RET",ip:"-",m:524},
+{n:"Misbah-ul-Haq",c:"PAK",r:"BAT",b:"R",w:"-",y:1974,s:"RET",ip:"-",m:277},
+{n:"Babar Azam",c:"PAK",r:"BAT",b:"R",w:"-",y:1994,s:"ACT",ip:"-",m:330},
+{n:"Mohammad Rizwan",c:"PAK",r:"WK",b:"R",w:"-",y:1992,s:"ACT",ip:"-",m:196},
+{n:"Shaheen Afridi",c:"PAK",r:"BWL",b:"L",w:"LF",y:2000,s:"ACT",ip:"-",m:126},
+{n:"Shadab Khan",c:"PAK",r:"ALL",b:"R",w:"LB",y:1998,s:"ACT",ip:"-",m:96},
+{n:"Mohammad Amir",c:"PAK",r:"BWL",b:"L",w:"LF",y:1992,s:"ACT",ip:"-",m:308},
+{n:"Shoaib Malik",c:"PAK",r:"ALL",b:"R",w:"OB",y:1982,s:"RET",ip:"-",m:336},
+{n:"Mohammad Yousuf",c:"PAK",r:"BAT",b:"R",w:"-",y:1974,s:"RET",ip:"-",m:224},
+{n:"Saeed Anwar",c:"PAK",r:"BAT",b:"L",w:"-",y:1968,s:"RET",ip:"-",m:256},
+{n:"Abdul Razzaq",c:"PAK",r:"ALL",b:"R",w:"RFM",y:1979,s:"RET",ip:"-",m:192},
+{n:"Fakhar Zaman",c:"PAK",r:"BAT",b:"L",w:"-",y:1990,s:"ACT",ip:"-",m:272},
+{n:"Haris Rauf",c:"PAK",r:"BWL",b:"R",w:"RFM",y:1993,s:"ACT",ip:"-",m:247},
+{n:"Jacques Kallis",c:"RSA",r:"ALL",b:"R",w:"RFM",y:1975,s:"RET",ip:"KKR",m:519},
+{n:"AB de Villiers",c:"RSA",r:"BAT",b:"R",w:"-",y:1984,s:"RET",ip:"RCB",m:420},
+{n:"Hashim Amla",c:"RSA",r:"BAT",b:"R",w:"-",y:1983,s:"RET",ip:"-",m:351},
+{n:"Graeme Smith",c:"RSA",r:"BAT",b:"L",w:"-",y:1981,s:"RET",ip:"RR",m:361},
+{n:"Dale Steyn",c:"RSA",r:"BWL",b:"R",w:"RFM",y:1983,s:"RET",ip:"SRH",m:251},
+{n:"Faf du Plessis",c:"RSA",r:"BAT",b:"R",w:"-",y:1984,s:"ACT",ip:"RCB",m:528},
+{n:"Quinton de Kock",c:"RSA",r:"WK",b:"L",w:"-",y:1992,s:"ACT",ip:"MI",m:168},
+{n:"Kagiso Rabada",c:"RSA",r:"BWL",b:"R",w:"RFM",y:1995,s:"ACT",ip:"GT",m:154},
+{n:"Morne Morkel",c:"RSA",r:"BWL",b:"R",w:"RFM",y:1984,s:"RET",ip:"-",m:208},
+{n:"Vernon Philander",c:"RSA",r:"ALL",b:"R",w:"RFM",y:1985,s:"RET",ip:"-",m:368},
+{n:"Makhaya Ntini",c:"RSA",r:"BWL",b:"R",w:"RFM",y:1977,s:"RET",ip:"-",m:208},
+{n:"Allan Donald",c:"RSA",r:"BWL",b:"R",w:"RFM",y:1966,s:"RET",ip:"-",m:232},
+{n:"Shaun Pollock",c:"RSA",r:"ALL",b:"R",w:"RFM",y:1973,s:"RET",ip:"-",m:423},
+{n:"Jonty Rhodes",c:"RSA",r:"BAT",b:"R",w:"-",y:1969,s:"RET",ip:"-",m:256},
+{n:"Herschelle Gibbs",c:"RSA",r:"BAT",b:"R",w:"-",y:1974,s:"RET",ip:"DEC",m:304},
+{n:"David Miller",c:"RSA",r:"BAT",b:"L",w:"-",y:1989,s:"ACT",ip:"GT",m:306},
+{n:"Aiden Markram",c:"RSA",r:"BAT",b:"R",w:"OB",y:1994,s:"ACT",ip:"SRH",m:288},
+{n:"Marco Jansen",c:"RSA",r:"ALL",b:"L",w:"LF",y:2002,s:"ACT",ip:"SRH",m:52},
+{n:"Brian Lara",c:"WI",r:"BAT",b:"L",w:"-",y:1969,s:"RET",ip:"-",m:428},
+{n:"Viv Richards",c:"WI",r:"BAT",b:"R",w:"OB",y:1952,s:"RET",ip:"-",m:286},
+{n:"Garfield Sobers",c:"WI",r:"ALL",b:"L",w:"SLA",y:1936,s:"RET",ip:"-",m:93},
+{n:"Clive Lloyd",c:"WI",r:"BAT",b:"L",w:"-",y:1944,s:"RET",ip:"-",m:216},
+{n:"Curtly Ambrose",c:"WI",r:"BWL",b:"R",w:"RFM",y:1963,s:"RET",ip:"-",m:268},
+{n:"Courtney Walsh",c:"WI",r:"BWL",b:"R",w:"RFM",y:1962,s:"RET",ip:"-",m:280},
+{n:"Malcolm Marshall",c:"WI",r:"BWL",b:"R",w:"RFM",y:1958,s:"RET",ip:"-",m:151},
+{n:"Chris Gayle",c:"WI",r:"BAT",b:"L",w:"OB",y:1979,s:"RET",ip:"RCB",m:483},
+{n:"Shivnarine Chanderpaul",c:"WI",r:"BAT",b:"L",w:"-",y:1974,s:"RET",ip:"-",m:446},
+{n:"Dwayne Bravo",c:"WI",r:"ALL",b:"R",w:"RFM",y:1983,s:"RET",ip:"CSK",m:384},
+{n:"Kieron Pollard",c:"WI",r:"ALL",b:"R",w:"RFM",y:1987,s:"RET",ip:"MI",m:368},
+{n:"Sunil Narine",c:"WI",r:"BWL",b:"L",w:"OB",y:1988,s:"ACT",ip:"KKR",m:252},
+{n:"Andre Russell",c:"WI",r:"ALL",b:"R",w:"RFM",y:1988,s:"ACT",ip:"KKR",m:414},
+{n:"Jason Holder",c:"WI",r:"ALL",b:"R",w:"RFM",y:1991,s:"ACT",ip:"-",m:210},
+{n:"Nicholas Pooran",c:"WI",r:"WK",b:"L",w:"-",y:1995,s:"ACT",ip:"LSG",m:264},
+{n:"Shai Hope",c:"WI",r:"WK",b:"R",w:"-",y:1993,s:"ACT",ip:"-",m:299},
+{n:"Shimron Hetmyer",c:"WI",r:"BAT",b:"L",w:"-",y:1996,s:"ACT",ip:"RR",m:220},
+{n:"Darren Sammy",c:"WI",r:"ALL",b:"R",w:"RFM",y:1983,s:"RET",ip:"SRH",m:384},
+{n:"Kane Williamson",c:"NZ",r:"BAT",b:"R",w:"OB",y:1990,s:"ACT",ip:"GT",m:420},
+{n:"Ross Taylor",c:"NZ",r:"BAT",b:"R",w:"-",y:1984,s:"RET",ip:"-",m:352},
+{n:"Brendon McCullum",c:"NZ",r:"WK",b:"R",w:"-",y:1981,s:"RET",ip:"KKR",m:378},
+{n:"Martin Guptill",c:"NZ",r:"BAT",b:"R",w:"-",y:1986,s:"RET",ip:"-",m:304},
+{n:"Trent Boult",c:"NZ",r:"BWL",b:"R",w:"LF",y:1989,s:"ACT",ip:"RR",m:255},
+{n:"Tim Southee",c:"NZ",r:"BWL",b:"R",w:"RFM",y:1988,s:"ACT",ip:"-",m:252},
+{n:"Daniel Vettori",c:"NZ",r:"ALL",b:"L",w:"SLA",y:1979,s:"RET",ip:"RCB",m:453},
+{n:"Richard Hadlee",c:"NZ",r:"ALL",b:"R",w:"RFM",y:1951,s:"RET",ip:"-",m:150},
+{n:"Stephen Fleming",c:"NZ",r:"BAT",b:"L",w:"-",y:1973,s:"RET",ip:"-",m:208},
+{n:"Chris Cairns",c:"NZ",r:"ALL",b:"R",w:"RFM",y:1970,s:"RET",ip:"-",m:256},
+{n:"Martin Crowe",c:"NZ",r:"BAT",b:"R",w:"-",y:1962,s:"RET",ip:"-",m:256},
+{n:"Devon Conway",c:"NZ",r:"BAT",b:"L",w:"-",y:1991,s:"ACT",ip:"CSK",m:210},
+{n:"Mitchell Santner",c:"NZ",r:"ALL",b:"L",w:"SLA",y:1992,s:"ACT",ip:"CSK",m:280},
+{n:"Daryl Mitchell",c:"NZ",r:"ALL",b:"R",w:"RFM",y:1991,s:"ACT",ip:"-",m:360},
+{n:"Tom Latham",c:"NZ",r:"WK",b:"L",w:"-",y:1992,s:"ACT",ip:"-",m:252},
+{n:"Muttiah Muralitharan",c:"SL",r:"BWL",b:"R",w:"OB",y:1972,s:"RET",ip:"CSK",m:495},
+{n:"Sanath Jayasuriya",c:"SL",r:"ALL",b:"L",w:"SLA",y:1969,s:"RET",ip:"MI",m:586},
+{n:"Kumar Sangakkara",c:"SL",r:"WK",b:"L",w:"-",y:1977,s:"RET",ip:"KKR",m:594},
+{n:"Mahela Jayawardene",c:"SL",r:"BAT",b:"R",w:"-",y:1977,s:"RET",ip:"DC",m:652},
+{n:"Aravinda de Silva",c:"SL",r:"BAT",b:"R",w:"OB",y:1965,s:"RET",ip:"-",m:423},
+{n:"Lasith Malinga",c:"SL",r:"BWL",b:"R",w:"RFM",y:1983,s:"RET",ip:"MI",m:338},
+{n:"Chaminda Vaas",c:"SL",r:"BWL",b:"L",w:"LF",y:1974,s:"RET",ip:"-",m:272},
+{n:"Angelo Mathews",c:"SL",r:"ALL",b:"R",w:"RFM",y:1987,s:"ACT",ip:"-",m:456},
+{n:"Wanindu Hasaranga",c:"SL",r:"ALL",b:"R",w:"LB",y:1997,s:"ACT",ip:"RCB",m:189},
+{n:"Tillakaratne Dilshan",c:"SL",r:"BAT",b:"R",w:"OB",y:1976,s:"RET",ip:"-",m:320},
+{n:"Arjuna Ranatunga",c:"SL",r:"BAT",b:"L",w:"-",y:1963,s:"RET",ip:"-",m:320},
+{n:"Dimuth Karunaratne",c:"SL",r:"BAT",b:"L",w:"-",y:1988,s:"ACT",ip:"-",m:342},
+{n:"Shakib Al Hasan",c:"BAN",r:"ALL",b:"L",w:"SLA",y:1987,s:"ACT",ip:"KKR",m:420},
+{n:"Tamim Iqbal",c:"BAN",r:"BAT",b:"L",w:"-",y:1989,s:"RET",ip:"-",m:391},
+{n:"Mushfiqur Rahim",c:"BAN",r:"WK",b:"R",w:"-",y:1987,s:"ACT",ip:"-",m:304},
+{n:"Mashrafe Mortaza",c:"BAN",r:"BWL",b:"R",w:"RFM",y:1983,s:"RET",ip:"-",m:272},
+{n:"Mustafizur Rahman",c:"BAN",r:"BWL",b:"R",w:"LF",y:1995,s:"ACT",ip:"SRH",m:242},
+{n:"Mahmudullah",c:"BAN",r:"ALL",b:"R",w:"OB",y:1986,s:"ACT",ip:"-",m:280},
+{n:"Litton Das",c:"BAN",r:"WK",b:"R",w:"-",y:1994,s:"ACT",ip:"-",m:180},
+{n:"Taskin Ahmed",c:"BAN",r:"BWL",b:"R",w:"RFM",y:1995,s:"ACT",ip:"-",m:220},
+{n:"Rashid Khan",c:"AFG",r:"BWL",b:"R",w:"LB",y:1998,s:"ACT",ip:"GT",m:250},
+{n:"Mohammad Nabi",c:"AFG",r:"ALL",b:"R",w:"OB",y:1985,s:"ACT",ip:"-",m:294},
+{n:"Mujeeb Ur Rahman",c:"AFG",r:"BWL",b:"R",w:"OB",y:2001,s:"ACT",ip:"-",m:90},
+{n:"Rahmanullah Gurbaz",c:"AFG",r:"WK",b:"R",w:"-",y:2001,s:"ACT",ip:"-",m:90},
+{n:"Hashmatullah Shahidi",c:"AFG",r:"BAT",b:"L",w:"-",y:1994,s:"ACT",ip:"-",m:288},
+{n:"Andy Flower",c:"ZIM",r:"WK",b:"L",w:"-",y:1968,s:"RET",ip:"-",m:208},
+{n:"Heath Streak",c:"ZIM",r:"ALL",b:"R",w:"RFM",y:1974,s:"RET",ip:"-",m:224},
+{n:"Sikandar Raza",c:"ZIM",r:"ALL",b:"R",w:"OB",y:1986,s:"ACT",ip:"-",m:240},
+{n:"Smriti Mandhana",c:"IND",r:"BAT",b:"L",w:"-",y:1996,s:"ACT",ip:"-",m:160},
+{n:"Harmanpreet Kaur",c:"IND",r:"ALL",b:"R",w:"OB",y:1989,s:"ACT",ip:"-",m:221},
+{n:"Mithali Raj",c:"IND",r:"BAT",b:"R",w:"-",y:1982,s:"RET",ip:"-",m:240},
+{n:"Ellyse Perry",c:"AUS",r:"ALL",b:"R",w:"RFM",y:1990,s:"ACT",ip:"-",m:192},
+{n:"Meg Lanning",c:"AUS",r:"BAT",b:"R",w:"-",y:1992,s:"RET",ip:"-",m:196},
+{n:"Alyssa Healy",c:"AUS",r:"WK",b:"R",w:"-",y:1990,s:"ACT",ip:"-",m:240},
+{n:"Heather Knight",c:"ENG",r:"BAT",b:"R",w:"OB",y:1990,s:"ACT",ip:"-",m:224},
+{n:"Nat Sciver-Brunt",c:"ENG",r:"ALL",b:"R",w:"RFM",y:1992,s:"ACT",ip:"-",m:322},
+{n:"Sophie Ecclestone",c:"ENG",r:"BWL",b:"R",w:"SLA",y:1999,s:"ACT",ip:"-",m:154},
+{n:"Chamari Athapaththu",c:"SL",r:"BAT",b:"R",w:"-",y:1990,s:"ACT",ip:"-",m:304},
+{n:"Deandra Dottin",c:"WI",r:"ALL",b:"R",w:"RFM",y:1991,s:"ACT",ip:"-",m:225}
+];
+
+const COUNTRY_LABEL = {IND:"India",AUS:"Australia",ENG:"England",PAK:"Pakistan",RSA:"South Africa",WI:"West Indies",NZ:"New Zealand",SL:"Sri Lanka",BAN:"Bangladesh",AFG:"Afghanistan",ZIM:"Zimbabwe"};
+const ROLE_LABEL = {BAT:"Batter",BWL:"Bowler",ALL:"All-rounder",WK:"WK-Batter"};
+const ROLE_SKILLS = {BAT:["bat"],WK:["bat","wk"],BWL:["bowl"],ALL:["bat","bowl"]};
+const BOWL_ARM = {RFM:"R",LF:"L",OB:"R",LB:"R",SLA:"L",LWS:"L","-":"N"};
+const BOWL_TYPE = {RFM:"pace",LF:"pace",OB:"spin",LB:"spin",SLA:"spin",LWS:"spin","-":"none"};
+
+const MAX_GUESSES = 8;
+const HINT_FIELDS = [
+  {key:"c", label:"Country", text:p=>COUNTRY_LABEL[p.c]},
+  {key:"ip", label:"IPL team", text:p=>p.ip==="-" ? "never played in the IPL" : "played for "+p.ip+" in the IPL"},
+  {key:"r", label:"Role", text:p=>"a "+ROLE_LABEL[p.r]},
+  {key:"b", label:"Bats", text:p=>p.b==="R"?"right-handed":"left-handed"},
+  {key:"w", label:"Bowling style", text:p=>p.w==="-" ? "doesn't really bowl" : p.w+" bowling"},
+  {key:"y", label:"Born", text:p=>"born in "+p.y},
+  {key:"m", label:"Matches", text:p=>"played roughly "+p.m+" international matches"},
+  {key:"s", label:"Status", text:p=>p.s==="ACT" ? "still active internationally" : "retired from international cricket"},
+];
+
+let state = { target:null, guesses:[], over:false, mode:"daily", hintsUsed:[] };
+
+/* ---------------- deterministic daily index ---------------- */
+function dailyIndex(){
+  const d = new Date();
+  const dateStr = d.getUTCFullYear()+"-"+(d.getUTCMonth()+1)+"-"+d.getUTCDate();
+  let hash = 0;
+  for(const ch of dateStr){ hash = (hash*31 + ch.charCodeAt(0)) >>> 0; }
+  return hash % PLAYERS.length;
+}
+
+function startGame(mode){
+  state.mode = mode;
+  state.target = mode === "daily" ? PLAYERS[dailyIndex()] : PLAYERS[Math.floor(Math.random()*PLAYERS.length)];
+  state.guesses = [];
+  state.over = false;
+  state.hintsUsed = [];
+  document.getElementById("rows").innerHTML = "";
+  document.getElementById("resultCard").style.display = "none";
+  document.getElementById("resultCard").classList.remove("lose");
+  document.getElementById("guessInput").value = "";
+  document.getElementById("guessInput").disabled = false;
+  document.getElementById("btnHint").disabled = false;
+  document.getElementById("btnGiveUp").disabled = false;
+  const hb = document.getElementById("hintBox");
+  hb.style.display = "none";
+  hb.innerHTML = "";
+  document.getElementById("modeLabel").textContent = mode === "daily" ? "Today's player" : "Practice mode — random player";
+  document.getElementById("btnDaily").classList.toggle("active", mode==="daily");
+  document.getElementById("btnPractice").classList.toggle("active", mode==="practice");
+  updateStatus();
+}
+
+function updateStatus(){
+  document.getElementById("guessCount").textContent = state.guesses.length;
+}
+
+/* ---------------- autocomplete ---------------- */
+const input = document.getElementById("guessInput");
+const dropdown = document.getElementById("dropdown");
+let ddIndex = -1;
+
+function guessedNames(){ return new Set(state.guesses.map(g=>g.n)); }
+
+input.addEventListener("input", ()=>{
+  const q = input.value.trim().toLowerCase();
+  ddIndex = -1;
+  if(!q){ dropdown.classList.remove("show"); return; }
+  const already = guessedNames();
+  const matches = PLAYERS.filter(p => !already.has(p.n) && p.n.toLowerCase().includes(q)).slice(0,8);
+  if(matches.length === 0){
+    dropdown.innerHTML = '<div class="dd-empty">No matching player</div>';
+    dropdown.classList.add("show");
+    return;
+  }
+  dropdown.innerHTML = matches.map((p,i)=>`<div class="dd-item" data-name="${p.n}" data-i="${i}"><span>${p.n}</span><span class="cc">${p.c}</span></div>`).join("");
+  dropdown.classList.add("show");
+});
+
+dropdown.addEventListener("click",(e)=>{
+  const item = e.target.closest(".dd-item");
+  if(!item || !item.dataset.name) return;
+  submitGuess(item.dataset.name);
+});
+
+input.addEventListener("keydown",(e)=>{
+  const items = Array.from(dropdown.querySelectorAll(".dd-item"));
+  if(e.key === "ArrowDown"){ e.preventDefault(); ddIndex = Math.min(ddIndex+1, items.length-1); highlightDD(items); }
+  else if(e.key === "ArrowUp"){ e.preventDefault(); ddIndex = Math.max(ddIndex-1, 0); highlightDD(items); }
+  else if(e.key === "Enter"){
+    e.preventDefault();
+    if(ddIndex >= 0 && items[ddIndex]) submitGuess(items[ddIndex].dataset.name);
+    else if(items.length === 1) submitGuess(items[0].dataset.name);
+  }
+});
+function highlightDD(items){ items.forEach(i=>i.classList.remove("hi")); if(items[ddIndex]){ items[ddIndex].classList.add("hi"); items[ddIndex].scrollIntoView({block:"nearest"}); } }
+
+document.addEventListener("click",(e)=>{
+  if(!e.target.closest(".search-wrap")) dropdown.classList.remove("show");
+});
+
+/* ---------------- guess evaluation ---------------- */
+function evalGuess(g, target){
+  const res = {};
+
+  res.country = g.c === target.c ? "green" : "red";
+  res.status = g.s === target.s ? "green" : "red";
+  res.bat = g.b === target.b ? "green" : "red";
+
+  if(g.ip === target.ip) res.ipl = "green";
+  else if(g.ip !== "-" && target.ip !== "-") res.ipl = "yellow";
+  else res.ipl = "red";
+
+  if(g.r === target.r) res.role = "green";
+  else {
+    const overlap = ROLE_SKILLS[g.r].some(s => ROLE_SKILLS[target.r].includes(s));
+    res.role = overlap ? "yellow" : "red";
+  }
+
+  if(g.w === target.w) res.bowl = "green";
+  else {
+    const armMatch = BOWL_ARM[g.w] === BOWL_ARM[target.w] && BOWL_ARM[g.w] !== "N";
+    const typeMatch = BOWL_TYPE[g.w] === BOWL_TYPE[target.w] && BOWL_TYPE[g.w] !== "none";
+    res.bowl = (armMatch || typeMatch) ? "yellow" : "red";
+  }
+
+  const yDiff = Math.abs(g.y - target.y);
+  if(yDiff === 0) res.born = "green";
+  else if(yDiff <= 3) res.born = "yellow";
+  else res.born = "red";
+  res.bornArrow = g.y === target.y ? "" : (g.y < target.y ? "↑" : "↓");
+
+  const mDiff = Math.abs(g.m - target.m);
+  if(mDiff === 0) res.matches = "green";
+  else if(mDiff <= 40) res.matches = "yellow";
+  else res.matches = "red";
+  res.matchesArrow = g.m === target.m ? "" : (g.m < target.m ? "↑" : "↓");
+
+  return res;
+}
+
+function submitGuess(name){
+  if(state.over) return;
+  const g = PLAYERS.find(p => p.n === name);
+  if(!g) return;
+
+  const result = evalGuess(g, state.target);
+  state.guesses.push(g);
+  renderCard(g, result);
+  input.value = "";
+  dropdown.classList.remove("show");
+  updateStatus();
+
+  const won = g.n === state.target.n;
+  if(won){ endGame(true); }
+  else if(state.guesses.length >= MAX_GUESSES){ endGame(false); }
+}
+
+function renderCard(g, res){
+  const card = document.createElement("div");
+  card.className = "guess-card";
+  const isHit = g.n === state.target.n;
+  card.innerHTML = `
+    <div class="guess-name ${isHit ? 'hit' : ''}">${g.n}${isHit ? ' ✅' : ''}</div>
+    <div class="stat-grid">
+      <div class="cell ${res.country}"><div class="lbl">Country</div><div class="val">${g.c}</div></div>
+      <div class="cell ${res.ipl}"><div class="lbl">IPL</div><div class="val">${g.ip}</div></div>
+      <div class="cell ${res.role}"><div class="lbl">Role</div><div class="val">${g.r}</div></div>
+      <div class="cell ${res.bat}"><div class="lbl">Bats</div><div class="val">${g.b}</div></div>
+      <div class="cell ${res.bowl}"><div class="lbl">Bowls</div><div class="val">${g.w}</div></div>
+      <div class="cell ${res.born}"><div class="lbl">Born</div><div class="val">${g.y}</div><div class="arrow">${res.bornArrow}</div></div>
+      <div class="cell ${res.matches}"><div class="lbl">Matches</div><div class="val">${g.m}</div><div class="arrow">${res.matchesArrow}</div></div>
+      <div class="cell ${res.status}"><div class="lbl">Status</div><div class="val">${g.s}</div></div>
+    </div>
+  `;
+  document.getElementById("rows").prepend(card);
+}
+
+function endGame(won, gaveUp){
+  state.over = true;
+  input.disabled = true;
+  document.getElementById("btnHint").disabled = true;
+  document.getElementById("btnGiveUp").disabled = true;
+  dropdown.classList.remove("show");
+  const card = document.getElementById("resultCard");
+  card.style.display = "block";
+  card.classList.toggle("lose", !won);
+  const realGuessCount = state.guesses.filter(g => !g.__hint).length;
+  document.getElementById("resultTitle").textContent = won ? "Howzat! You got it!" : (gaveUp ? "No shame in that" : "Stumped!");
+  document.getElementById("resultAns").innerHTML = won
+    ? `Nailed it in <b>${realGuessCount}</b> guess${realGuessCount>1?'es':''}${state.hintsUsed.length ? ` (used ${state.hintsUsed.length} hint${state.hintsUsed.length>1?'s':''})` : ''}.`
+    : `The answer was <b>${state.target.n}</b> (${COUNTRY_LABEL[state.target.c]}).`;
+}
+
+/* ---------------- hint ---------------- */
+document.getElementById("btnHint").addEventListener("click", ()=>{
+  if(state.over) return;
+  const remaining = HINT_FIELDS.filter(f => !state.hintsUsed.includes(f.key));
+  if(remaining.length === 0) return;
+  const pick = remaining[Math.floor(Math.random()*remaining.length)];
+  state.hintsUsed.push(pick.key);
+
+  const hb = document.getElementById("hintBox");
+  hb.style.display = "block";
+  hb.innerHTML += (hb.innerHTML ? "<br>" : "") + `<b>${pick.label}:</b> ${pick.text(state.target)}`;
+
+  // a hint costs one guess, same as a wrong guess would
+  state.guesses.push({ __hint:true });
+  updateStatus();
+
+  if(state.hintsUsed.length >= HINT_FIELDS.length) document.getElementById("btnHint").disabled = true;
+  if(state.guesses.length >= MAX_GUESSES) endGame(false);
+});
+
+/* ---------------- give up ---------------- */
+document.getElementById("btnGiveUp").addEventListener("click", ()=>{
+  if(state.over) return;
+  endGame(false, true);
+});
+
+/* ---------------- share ---------------- */
+function buildShareText(){
+  const label = state.mode === "daily" ? "Cricketle (Daily)" : "Cricketle (Practice)";
+  const realGuesses = state.guesses.filter(g => !g.__hint);
+  const rows = realGuesses.map(g=>{
+    const res = evalGuess(g, state.target);
+    const sq = {green:"🟩",yellow:"🟨",red:"🟥"};
+    return [sq[res.country],sq[res.ipl],sq[res.role],sq[res.bat],sq[res.bowl],sq[res.born],sq[res.matches],sq[res.status]].join("");
+  }).join("\n");
+  const won = realGuesses.length && realGuesses[realGuesses.length-1].n === state.target.n;
+  const outcome = won ? `${state.guesses.length}/${MAX_GUESSES}` : `X/${MAX_GUESSES}`;
+  const hintNote = state.hintsUsed.length ? ` (${state.hintsUsed.length} hint${state.hintsUsed.length>1?'s':''} used)` : "";
+  return `${label} ${outcome}${hintNote}\n${rows}`;
+}
+
+document.getElementById("btnShare").addEventListener("click", async ()=>{
+  const text = buildShareText();
+  try{
+    await navigator.clipboard.writeText(text);
+    showToast("Result copied!");
+  }catch(e){
+    showToast("Couldn't copy — long-press to select instead");
+  }
+});
+
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 1800);
+}
+
+/* ---------------- controls ---------------- */
+document.getElementById("btnDaily").addEventListener("click", ()=> startGame("daily"));
+document.getElementById("btnPractice").addEventListener("click", ()=> startGame("practice"));
+document.getElementById("btnPlayAgain").addEventListener("click", ()=> startGame("practice"));
+document.getElementById("btnRules").addEventListener("click", ()=>{
+  const c = document.getElementById("rulesCard");
+  c.style.display = c.style.display === "none" || !c.style.display ? "block" : "none";
+});
+
+/* ---------------- PWA ---------------- */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('/sw.js').catch(()=>{}); });
+}
+
+/* ---------------- init ---------------- */
+startGame("daily");
+</script>
+</body>
+</html>
