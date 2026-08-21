@@ -361,6 +361,9 @@ input[type=text]:focus, input[type=number]:focus{ border-color:var(--gold); }
         <button class="btn btn-ghost btn-sm" id="btnSkip">Skip AI</button>
         <button class="btn btn-ghost btn-sm" id="btnViewSquad">My Squad</button>
       </div>
+      <div style="text-align:center; margin-top:8px;">
+        <button class="btn btn-gold btn-sm" id="btnSkipDynastyAuction" style="display:none;">⏩ Skip Rest of Auction</button>
+      </div>
 
       <div class="commentary" id="commentary"></div>
     </div>
@@ -551,16 +554,23 @@ input[type=text]:focus, input[type=number]:focus{ border-color:var(--gold); }
     <table class="squad-table" id="dynStandingsTable"></table>
   </div>
 
-  <div id="dynLeagueControls" style="text-align:center; margin:16px 0;">
+  <div id="dynLeagueControls" style="text-align:center; margin:16px 0; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
     <button class="btn btn-gold" id="btnDynSimLeague">Simulate League Matches</button>
+    <button class="btn btn-ghost btn-sm" id="btnSkipThisGame" style="display:none;">⏭ Simulate This Match Instead</button>
   </div>
 
   <div id="dynPlayoffsWrap" style="display:none;">
     <div class="section-title">Playoffs</div>
     <div class="results-grid" id="dynPlayoffsGrid"></div>
-    <div style="text-align:center; margin:16px 0;">
+    <div style="text-align:center; margin:16px 0; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
       <button class="btn btn-gold" id="btnDynSimPlayoffs">Simulate Playoffs</button>
+      <button class="btn btn-ghost btn-sm" id="btnSkipThisPlayoffGame" style="display:none;">⏭ Simulate This Match Instead</button>
     </div>
+  </div>
+
+  <div id="dynSeasonSkipWrap" style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:6px 0 16px;">
+    <button class="btn btn-ghost btn-sm" id="btnSkipHalfSeason">⏭ Skip Half the Remaining Season</button>
+    <button class="btn btn-ghost btn-sm" id="btnSkipRestOfSeason">⏩ Skip Rest of Season</button>
   </div>
 
   <div id="dynChampionWrap" style="display:none; text-align:center; margin:20px 0;">
@@ -1477,6 +1487,7 @@ function renderAuctionUI(){
   renderTopBar();
   renderSidePanels();
   renderPlayerStage();
+  document.getElementById('btnSkipDynastyAuction').style.display = soloDynastyFlow ? 'inline-block' : 'none';
 }
 function renderTopBar(){
   const label = G.phase==='main' ? "LIVE AUCTION" : "UNSOLD ROUND";
@@ -2268,6 +2279,43 @@ function soloPlayoffAdvance(){
   renderDynastySeason();
 }
 function soloSimulatePlayoffs(){ soloPlayoffAdvance(); }
+
+function skipHalfSeason(){
+  const S = SZN;
+  if(!S || S.stage!=='league') return;
+  const remaining = S.fixtures.filter(f=>!f.played);
+  const half = Math.ceil(remaining.length/2);
+  for(let i=0;i<half;i++){
+    soloRecordResult(remaining[i], soloSimOneMatch(remaining[i].home, remaining[i].away));
+  }
+  renderDynastySeason();
+}
+function skipRestOfSeason(){
+  const S = SZN;
+  if(!S || S.stage==='done') return;
+  if(S.stage==='league'){
+    S.fixtures.forEach(f=>{ if(!f.played) soloRecordResult(f, soloSimOneMatch(f.home, f.away)); });
+    soloFinishLeagueStage();
+  }
+  let nm;
+  while((nm = soloNextPlayoffMatch())){
+    nm.obj.winner = soloSimOneMatch(nm.obj.home, nm.obj.away);
+    const loser = nm.obj.winner===nm.obj.home ? nm.obj.away : nm.obj.home;
+    S.log.unshift(`${nm.label}: ${TEAMS[nm.obj.winner].name} beat ${TEAMS[loser].name}`);
+  }
+  if(S.stage!=='done'){
+    S.playoffs.champion = S.playoffs.final.winner;
+    S.stage = 'done';
+    S.log.unshift(`🏆 ${TEAMS[S.playoffs.champion].name} win Season ${S.year}!`);
+    const table = TEAM_CODES.slice().sort((a,b)=> S.standings[b].pts-S.standings[a].pts || dynSoloTeamStrength(b)-dynSoloTeamStrength(a));
+    DYNASTY_HISTORY.seasons.push({
+      year: S.year, champion: S.playoffs.champion,
+      yourRecord: {...S.standings[selectedTeam]}, yourFinish: table.indexOf(selectedTeam)+1,
+    });
+  }
+  S.log = S.log.slice(0,60);
+  renderDynastySeason();
+}
 
 /* ============================================================
    DYNASTY COACH MODE — interactive match engine.
@@ -3564,6 +3612,10 @@ document.getElementById('btnProposeTrade').addEventListener('click', ()=> propos
 document.getElementById('btnContinueToRetain').addEventListener('click', ()=> proceedToRetention());
 document.getElementById('btnConfirmRetain').addEventListener('click', ()=> finalizeYearTransition());
 document.getElementById('btnOpenTrophyCabinet').addEventListener('click', ()=>{ show('screen-dynasty-trophy'); renderTrophyCabinet(); });
+document.getElementById('btnSkipHalfSeason').addEventListener('click', ()=> skipHalfSeason());
+document.getElementById('btnSkipRestOfSeason').addEventListener('click', ()=>{
+  if(confirm('Skip the rest of this season? All remaining matches, including any of yours, will be resolved statistically.')) skipRestOfSeason();
+});
 document.getElementById('btnCloseTrophyCabinet').addEventListener('click', ()=> show('screen-dynasty-season'));
 
 function renderDynastySeason(){
@@ -3583,16 +3635,20 @@ function renderDynastySeason(){
 
   const leagueCtrl = document.getElementById('dynLeagueControls');
   const btnSim = document.getElementById('btnDynSimLeague');
+  const btnSkipGame = document.getElementById('btnSkipThisGame');
   if(S.stage==='league'){
-    leagueCtrl.style.display = 'block';
+    leagueCtrl.style.display = 'flex';
     const nextFixture = S.fixtures.find(x=>!x.played);
     if(nextFixture && (nextFixture.home===selectedTeam || nextFixture.away===selectedTeam)){
       const opp = nextFixture.home===selectedTeam ? nextFixture.away : nextFixture.home;
       btnSim.textContent = `🏏 Play Match vs ${TEAMS[opp].name}`;
       btnSim.onclick = ()=> soloStartHumanMatch(nextFixture, 'league');
+      btnSkipGame.style.display = 'inline-block';
+      btnSkipGame.onclick = ()=>{ soloRecordResult(nextFixture, soloSimOneMatch(nextFixture.home, nextFixture.away)); soloAdvanceToNextHumanMatch(); };
     } else {
       btnSim.textContent = 'Simulate Next AI Matches';
       btnSim.onclick = ()=> soloAdvanceToNextHumanMatch();
+      btnSkipGame.style.display = 'none';
     }
   } else {
     leagueCtrl.style.display = 'none';
@@ -3605,6 +3661,7 @@ function renderDynastySeason(){
     const box = (label, m) => m ? `<div class="box"><div class="num" style="font-size:14px;">${TEAMS[m.home].name} vs ${TEAMS[m.away].name}</div><div class="lbl">${label}${m.winner?' — '+TEAMS[m.winner].name+' won':' — pending'}</div></div>` : '';
     document.getElementById('dynPlayoffsGrid').innerHTML = box('Qualifier 1', P.q1) + box('Eliminator', P.elim) + box('Qualifier 2', P.q2) + box('Final', P.final);
     const btnPlayoffs = document.getElementById('btnDynSimPlayoffs');
+    const btnSkipPlayoffGame = document.getElementById('btnSkipThisPlayoffGame');
     if(S.stage==='playoffs'){
       btnPlayoffs.style.display = 'inline-block';
       const nm = soloNextPlayoffMatch();
@@ -3612,9 +3669,18 @@ function renderDynastySeason(){
         const opp = nm.obj.home===selectedTeam ? nm.obj.away : nm.obj.home;
         btnPlayoffs.textContent = `🏏 Play ${nm.label} vs ${TEAMS[opp].name}`;
         btnPlayoffs.onclick = ()=> soloStartHumanMatch(nm.obj, nm.kind);
+        btnSkipPlayoffGame.style.display = 'inline-block';
+        btnSkipPlayoffGame.onclick = ()=>{
+          nm.obj.winner = soloSimOneMatch(nm.obj.home, nm.obj.away);
+          const loser = nm.obj.winner===nm.obj.home ? nm.obj.away : nm.obj.home;
+          S.log.unshift(`${nm.label}: ${TEAMS[nm.obj.winner].name} beat ${TEAMS[loser].name}`);
+          S.log = S.log.slice(0,60);
+          soloPlayoffAdvance();
+        };
       } else {
         btnPlayoffs.textContent = 'Simulate Next Playoff Match';
         btnPlayoffs.onclick = ()=> soloPlayoffAdvance();
+        btnSkipPlayoffGame.style.display = 'none';
       }
     } else {
       btnPlayoffs.style.display = 'none';
@@ -3631,6 +3697,8 @@ function renderDynastySeason(){
   } else {
     champWrap.style.display = 'none';
   }
+  document.getElementById('dynSeasonSkipWrap').style.display = (S.stage==='done') ? 'none' : 'flex';
+  document.getElementById('btnSkipHalfSeason').style.display = (S.stage==='league' && S.fixtures.filter(x=>!x.played).length>=2) ? 'inline-block' : 'none';
 
   document.getElementById('dynLog').innerHTML = (S.log||[]).map(l=>`<div class="line">${l}</div>`).join('');
 }
@@ -3687,6 +3755,60 @@ document.getElementById('btnSkip').addEventListener('click', ()=>{
   renderSidePanels();
   nextPlayer();
 });
+
+/* ---------------- Dynasty-only: skip rest of auction ----------------
+   Unlike "Skip AI" (which excludes the human from just the current player),
+   this fast-forwards every remaining player to completion. The human's own
+   team keeps bidding automatically too, using its own franchise's
+   personality profile from TEAMS — so skipping early doesn't leave you
+   with an empty squad. */
+function resolveCurrentPlayerAsAI(){
+  let active = true;
+  while(active){
+    const player = G.currentPlayer;
+    const ask = askPrice();
+    const candidates = [];
+    TEAM_CODES.forEach(code=>{
+      if(G.out.has(code) || G.holder===code) return;
+      if(!eligible(code, player)){ G.out.add(code); return; }
+      const willing = maxWillingBid(code, player);
+      if(willing >= ask) candidates.push({code, willing});
+    });
+    if(candidates.length > 0){
+      const weights = candidates.map(c=>Math.max(0.05,TEAMS[c.code].pers.aggr));
+      const totalW = weights.reduce((a,b)=>a+b,0);
+      let r = Math.random()*totalW;
+      let chosenCode = candidates[candidates.length-1].code;
+      for(let i=0;i<candidates.length;i++){ r-=weights[i]; if(r<=0){ chosenCode=candidates[i].code; break; } }
+      takeAction(chosenCode);
+    } else {
+      active = false;
+    }
+  }
+  G.resolved = true;
+  const player = G.currentPlayer;
+  if(G.holder === null){
+    G.unsoldList.push(player);
+  } else {
+    const code = G.holder;
+    const price = G.bid;
+    G.teams[code].purse -= price;
+    G.teams[code].squad.push({...player, paid:price});
+    G.history.push({player:player.n, team:code, price});
+  }
+}
+function skipRestOfDynastyAuction(){
+  if(!G) return;
+  if(!confirm("Skip the rest of this auction? Every remaining player (including for your own team) will be bought automatically based on team value and need.")) return;
+  clearPendingTimer();
+  let guard = 0;
+  while(document.getElementById('screen-auction').classList.contains('active') && guard < 5000){
+    if(!G.resolved) resolveCurrentPlayerAsAI();
+    nextPlayer();
+    guard++;
+  }
+}
+document.getElementById('btnSkipDynastyAuction').addEventListener('click', skipRestOfDynastyAuction);
 </script>
 </body>
 </html>
